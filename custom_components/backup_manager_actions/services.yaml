@@ -1,0 +1,61 @@
+create:
+  fields:
+    agent_ids:
+      required: true
+      example:
+        - hassio.local
+        - s3_compatible.example
+      selector:
+        text:
+          multiple: true
+    include_homeassistant:
+      default: true
+      selector:
+        boolean:
+    include_database:
+      default: true
+      selector:
+        boolean:
+    include_all_addons:
+      default: false
+      selector:
+        boolean:
+    include_addons:
+      example:
+        - core_mosquitto
+      selector:
+        text:
+          multiple: true
+    include_folders:
+      selector:
+        select:
+          multiple: true
+          options:
+            - label: Share
+              value: share
+            - label: Local add-ons
+              value: addons/local
+            - label: SSL
+              value: ssl
+            - label: Media
+              value: media
+    name:
+      selector:
+        text:
+    password:
+      selector:
+        text:
+          type: password
+
+delete:
+  fields:
+    backup_id:
+      required: true
+      selector:
+        text:
+    agent_ids:
+      selector:
+        text:
+          multiple: true
+
+refresh:
