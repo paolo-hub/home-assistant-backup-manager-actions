@@ -1,7 +1,19 @@
 {
   "services": {
-    "create": {"service": "mdi:backup-restore"},
-    "delete": {"service": "mdi:delete-outline"},
-    "refresh": {"service": "mdi:refresh"}
+    "create": {
+      "service": "mdi:backup-restore"
+    },
+    "delete": {
+      "service": "mdi:delete"
+    },
+    "list_backups": {
+      "service": "mdi:archive-search"
+    },
+    "get_backup": {
+      "service": "mdi:file-search"
+    },
+    "list_agents": {
+      "service": "mdi:database-search"
+    }
   }
 }

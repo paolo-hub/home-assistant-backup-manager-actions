@@ -1,56 +1,40 @@
 """Backup Manager Actions integration."""
 
-from __future__ import annotations
-
-from typing import Any
-
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.typing import ConfigType
 
-from .adapter import BackupManagerActionsAdapter
-from .const import DATA_ADAPTER, DATA_COORDINATORS, DOMAIN, PLATFORMS
+from .const import DOMAIN
 from .coordinator import BackupManagerActionsCoordinator
 from .services import async_setup_services
 
+PLATFORMS = [Platform.SENSOR, Platform.BINARY_SENSOR]
 
-type BackupManagerActionsConfigEntry = ConfigEntry[BackupManagerActionsCoordinator]
 
-
-async def async_setup(hass: HomeAssistant, _config: ConfigType) -> bool:
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up Backup Manager Actions."""
-    adapter = BackupManagerActionsAdapter(hass)
-    hass.data[DOMAIN] = {
-        DATA_ADAPTER: adapter,
-        DATA_COORDINATORS: set(),
-    }
-    async_setup_services(hass, adapter)
+    hass.data.setdefault(DOMAIN, {})
+    async_setup_services(hass)
     return True
 
 
-async def async_setup_entry(
-    hass: HomeAssistant, entry: BackupManagerActionsConfigEntry
-) -> bool:
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Backup Manager Actions from a config entry."""
-    domain_data: dict[str, Any] = hass.data[DOMAIN]
-    adapter: BackupManagerActionsAdapter = domain_data[DATA_ADAPTER]
-    coordinator = BackupManagerActionsCoordinator(hass, adapter)
-
+    coordinator = BackupManagerActionsCoordinator(hass, entry)
     await coordinator.async_config_entry_first_refresh()
-    coordinator.async_subscribe()
-    entry.async_on_unload(coordinator.async_unsubscribe)
 
-    coordinators: set[BackupManagerActionsCoordinator] = domain_data[DATA_COORDINATORS]
-    coordinators.add(coordinator)
-    entry.async_on_unload(lambda: coordinators.discard(coordinator))
+    for unsubscribe in coordinator.async_subscribe():
+        entry.async_on_unload(unsubscribe)
 
-    entry.runtime_data = coordinator
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
 
-async def async_unload_entry(
-    hass: HomeAssistant, entry: BackupManagerActionsConfigEntry
-) -> bool:
-    """Unload Backup Manager Actions config entry."""
-    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Unload a config entry."""
+    unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if unloaded:
+        hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
+    return unloaded

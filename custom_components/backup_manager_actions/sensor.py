@@ -1,16 +1,15 @@
 """Sensors for Backup Manager Actions."""
 
-from __future__ import annotations
-
-from typing import Any
+from typing import Any, override
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from .const import DOMAIN
 from .coordinator import BackupManagerActionsCoordinator
+from .entity import BackupManagerActionsEntity
 
 
 async def async_setup_entry(
@@ -19,104 +18,98 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up Backup Manager Actions sensors."""
-    coordinator: BackupManagerActionsCoordinator = entry.runtime_data
+    coordinator: BackupManagerActionsCoordinator = hass.data[DOMAIN][entry.entry_id]
     async_add_entities(
         [
-            BackupAgentCountSensor(coordinator, entry),
-            BackupCountSensor(coordinator, entry),
-            LatestBackupSensor(coordinator, entry),
+            BackupCountSensor(coordinator),
+            AgentCountSensor(coordinator),
+            LatestBackupSensor(coordinator),
         ]
     )
 
 
-class BackupManagerActionsSensor(
-    CoordinatorEntity[BackupManagerActionsCoordinator], SensorEntity
-):
-    """Base sensor for the integration."""
+class BackupCountSensor(BackupManagerActionsEntity, SensorEntity):
+    """Number of logical backups visible to Backup Manager."""
 
-    _attr_has_entity_name = True
-
-    def __init__(
-        self, coordinator: BackupManagerActionsCoordinator, entry: ConfigEntry
-    ) -> None:
-        """Initialize the sensor."""
-        super().__init__(coordinator)
-        self._entry_id = entry.entry_id
-
-
-class BackupAgentCountSensor(BackupManagerActionsSensor):
-    """Number of currently registered Backup Agents."""
-
-    _attr_translation_key = "backup_agents"
-    _attr_icon = "mdi:database-cog-outline"
-
-    def __init__(
-        self, coordinator: BackupManagerActionsCoordinator, entry: ConfigEntry
-    ) -> None:
-        """Initialize the sensor."""
-        super().__init__(coordinator, entry)
-        self._attr_unique_id = f"{entry.entry_id}_backup_agent_count"
-
-    @property
-    def native_value(self) -> int | None:
-        """Return the number of agents."""
-        return self.coordinator.data.get("agent_count") if self.coordinator.data else None
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        """Return agent ids and names."""
-        if not self.coordinator.data:
-            return {}
-        return {
-            "agents": self.coordinator.data.get("agents", {}),
-            "agent_errors": self.coordinator.data.get("agent_errors", {}),
-        }
-
-
-class BackupCountSensor(BackupManagerActionsSensor):
-    """Number of logical backups known to Backup Manager."""
-
-    _attr_translation_key = "backups"
+    _attr_translation_key = "backup_count"
+    _attr_unique_id = "backup_manager_actions_backup_count"
     _attr_icon = "mdi:backup-restore"
 
-    def __init__(
-        self, coordinator: BackupManagerActionsCoordinator, entry: ConfigEntry
-    ) -> None:
-        """Initialize the sensor."""
-        super().__init__(coordinator, entry)
-        self._attr_unique_id = f"{entry.entry_id}_backup_count"
+    @property
+    @override
+    def native_value(self) -> int:
+        """Return the number of logical backups."""
+        return len(self.coordinator.data.backups)
 
     @property
-    def native_value(self) -> int | None:
-        """Return backup count."""
-        return self.coordinator.data.get("backup_count") if self.coordinator.data else None
+    @override
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return Backup Manager listing errors."""
+        return {"agent_errors": self.coordinator.data.agent_errors}
 
 
-class LatestBackupSensor(BackupManagerActionsSensor):
-    """Latest logical backup seen across all Backup Agents."""
+class AgentCountSensor(BackupManagerActionsEntity, SensorEntity):
+    """Number of currently registered backup agents."""
+
+    _attr_translation_key = "agent_count"
+    _attr_unique_id = "backup_manager_actions_agent_count"
+    _attr_icon = "mdi:database-sync"
+
+    @property
+    @override
+    def native_value(self) -> int:
+        """Return the number of registered backup agents."""
+        return len(self.coordinator.data.agents)
+
+    @property
+    @override
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return registered backup agents."""
+        return {"agents": self.coordinator.data.agents}
+
+
+class LatestBackupSensor(BackupManagerActionsEntity, SensorEntity):
+    """Latest logical backup visible to Backup Manager."""
 
     _attr_translation_key = "latest_backup"
-    _attr_icon = "mdi:archive-clock-outline"
-
-    def __init__(
-        self, coordinator: BackupManagerActionsCoordinator, entry: ConfigEntry
-    ) -> None:
-        """Initialize the sensor."""
-        super().__init__(coordinator, entry)
-        self._attr_unique_id = f"{entry.entry_id}_latest_backup"
+    _attr_unique_id = "backup_manager_actions_latest_backup"
+    _attr_icon = "mdi:archive-clock"
 
     @property
+    def _latest_backup(self):
+        """Return the latest backup, if any."""
+        backups = self.coordinator.data.backups.values()
+        return max(backups, key=lambda backup: backup.date, default=None)
+
+    @property
+    @override
     def native_value(self) -> str | None:
         """Return the latest backup id."""
-        if not self.coordinator.data:
-            return None
-        latest = self.coordinator.data.get("latest_backup")
-        return latest.get("backup_id") if latest else None
+        backup = self._latest_backup
+        return backup.backup_id if backup else None
 
     @property
+    @override
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Expose latest backup metadata."""
-        if not self.coordinator.data:
+        """Return details of the latest backup."""
+        backup = self._latest_backup
+        if backup is None:
             return {}
-        latest = self.coordinator.data.get("latest_backup")
-        return latest or {}
+
+        return {
+            "name": backup.name,
+            "date": backup.date,
+            "homeassistant_version": backup.homeassistant_version,
+            "homeassistant_included": backup.homeassistant_included,
+            "database_included": backup.database_included,
+            "addons": [addon.slug for addon in backup.addons],
+            "folders": [folder.value for folder in backup.folders],
+            "agents": {
+                agent_id: {
+                    "protected": status.protected,
+                    "size": status.size,
+                }
+                for agent_id, status in backup.agents.items()
+            },
+            "failed_agent_ids": backup.failed_agent_ids,
+        }

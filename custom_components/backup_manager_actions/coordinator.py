@@ -3,68 +3,84 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 import logging
 from typing import Any
 
-from homeassistant.components.backup import (
-    BackupPlatformEvent,
-    IdleEvent,
-    ManagerStateEvent,
-)
+from homeassistant.components.backup import BackupPlatformEvent, IdleEvent, ManagerBackup
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .adapter import BackupManagerActionsAdapter
+from .adapter import BackupManagerAdapter
 from .const import DOMAIN
 
-LOGGER = logging.getLogger(__name__)
+_LOGGER = logging.getLogger(__name__)
 
 
-class BackupManagerActionsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
-    """Keep a small cached view of the Backup Manager."""
+@dataclass(frozen=True, slots=True)
+class BackupManagerActionsData:
+    """Data exposed by the coordinator."""
 
-    def __init__(
-        self, hass: HomeAssistant, adapter: BackupManagerActionsAdapter
-    ) -> None:
+    backups: dict[str, ManagerBackup]
+    agents: dict[str, dict[str, str]]
+    agent_errors: dict[str, str]
+
+
+class BackupManagerActionsCoordinator(
+    DataUpdateCoordinator[BackupManagerActionsData]
+):
+    """Keep Backup Manager information synchronized."""
+
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         """Initialize the coordinator."""
+        self.adapter = BackupManagerAdapter(hass)
         super().__init__(
             hass,
-            logger=LOGGER,
+            _LOGGER,
+            config_entry=entry,
             name=DOMAIN,
         )
-        self.adapter = adapter
-        self._unsubscribers: list[Callable[[], None]] = []
 
-    async def _async_update_data(self) -> dict[str, Any]:
-        """Fetch a coherent snapshot from the Backup Manager."""
+    async def _async_update_data(self) -> BackupManagerActionsData:
+        """Fetch current backup and agent information."""
         try:
-            return await self.adapter.async_snapshot()
+            backups, agent_errors = await self.adapter.async_get_backups()
         except Exception as err:
-            raise UpdateFailed(str(err)) from err
+            raise UpdateFailed(f"Unable to read Backup Manager data: {err}") from err
 
-    @callback
-    def async_subscribe(self) -> None:
-        """Refresh after Backup Manager operations and agent changes."""
-        manager = self.adapter.manager
+        agents = {
+            agent_id: {
+                "name": agent.name,
+                "domain": agent.domain,
+            }
+            for agent_id, agent in self.adapter.backup_agents.items()
+        }
 
-        @callback
-        def _on_backup_event(event: ManagerStateEvent) -> None:
-            if isinstance(event, IdleEvent):
-                self.hass.async_create_task(self.async_request_refresh())
-
-        @callback
-        def _on_platform_event(_event: BackupPlatformEvent) -> None:
-            self.hass.async_create_task(self.async_request_refresh())
-
-        self._unsubscribers.extend(
-            [
-                manager.async_subscribe_events(_on_backup_event),
-                manager.async_subscribe_platform_events(_on_platform_event),
-            ]
+        return BackupManagerActionsData(
+            backups=backups,
+            agents=agents,
+            agent_errors={
+                agent_id: str(error) for agent_id, error in agent_errors.items()
+            },
         )
 
     @callback
-    def async_unsubscribe(self) -> None:
-        """Remove Backup Manager listeners."""
-        while self._unsubscribers:
-            self._unsubscribers.pop()()
+    def _handle_manager_event(self, event: Any) -> None:
+        """Refresh after a Backup Manager operation finishes."""
+        if isinstance(event, IdleEvent):
+            self.hass.async_create_task(self.async_request_refresh())
+
+    @callback
+    def _handle_platform_event(self, event: BackupPlatformEvent) -> None:
+        """Refresh when backup agents are added or removed."""
+        self.hass.async_create_task(self.async_request_refresh())
+
+    @callback
+    def async_subscribe(self) -> list[Callable[[], None]]:
+        """Subscribe to Backup Manager events."""
+        manager = self.adapter.manager
+        return [
+            manager.async_subscribe_events(self._handle_manager_event),
+            manager.async_subscribe_platform_events(self._handle_platform_event),
+        ]
