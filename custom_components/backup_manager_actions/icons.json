@@ -1,0 +1,7 @@
+{
+  "services": {
+    "create": {"service": "mdi:backup-restore"},
+    "delete": {"service": "mdi:delete-outline"},
+    "refresh": {"service": "mdi:refresh"}
+  }
+}
