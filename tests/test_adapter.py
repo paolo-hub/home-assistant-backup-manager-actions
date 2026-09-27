@@ -257,6 +257,19 @@ async def test_create_rejects_unavailable_requested_agent() -> None:
         raise AssertionError("Unavailable requested agent should fail")
 
 
+
+async def test_delete_missing_backup_is_idempotent() -> None:
+    manager = Manager()
+    adapter = BackupManagerActionsAdapter(Hass(manager))
+
+    result = await adapter.async_delete(
+        backup_id="already-gone",
+        agent_ids=["local", "cloud"],
+    )
+    assert result["found_before_delete"] is False
+    assert result["remaining_agent_ids"] == []
+
+
 async def test_delete_global() -> None:
     manager = Manager()
     adapter = BackupManagerActionsAdapter(Hass(manager))
@@ -384,6 +397,7 @@ async def main() -> None:
     await test_create_ignores_unrelated_agent_lookup_error()
     await test_create_rejects_requested_agent_lookup_error()
     await test_create_rejects_unavailable_requested_agent()
+    await test_delete_missing_backup_is_idempotent()
     await test_delete_global()
     await test_delete_selected_copy()
     await test_delete_selected_ignores_unrelated_lookup_error()
