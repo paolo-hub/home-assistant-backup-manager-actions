@@ -39,11 +39,11 @@ data:
 response_variable: backup_result
 ```
 
-The response contains the `backup_id` plus requested/stored agents and per-agent size/protection information.
+When a response is requested, it contains the `backup_id`, backup name, requested/stored agents, and any per-agent lookup errors.
 
 ### `backup_manager_actions.delete`
 
-Deletes one logical backup. When `agent_ids` is omitted, Home Assistant's Backup Manager is asked to delete that `backup_id` from all registered Backup Agents. The integration verifies that the requested copies disappeared.
+Deletes one logical backup. When `agent_ids` is omitted, Home Assistant's Backup Manager is asked to delete that `backup_id` from all currently registered Backup Agents. If explicit `agent_ids` are supplied, the integration first verifies that every requested agent is currently registered; this prevents a retention run from silently skipping a missing cloud agent.
 
 ```yaml
 action: backup_manager_actions.delete
@@ -54,9 +54,17 @@ response_variable: delete_result
 
 An optional `agent_ids` list can be supplied to remove only selected copies.
 
-### `backup_manager_actions.refresh`
+### `backup_manager_actions.list_agents`
 
-Refreshes the integration sensors from Backup Manager.
+Returns the Backup Agents currently registered in Home Assistant. Use this action to discover the exact agent IDs required by `create` and, optionally, `delete`.
+
+### `backup_manager_actions.list_backups`
+
+Returns all logical backups visible to Backup Manager, merged by backup ID across storage agents.
+
+### `backup_manager_actions.get_backup`
+
+Returns details for one logical backup, including the agents that currently contain it.
 
 ## Sensors
 
@@ -64,7 +72,8 @@ The integration intentionally avoids duplicating Home Assistant's native Backup 
 
 - **Backup agents** — number of currently registered agents, with IDs/names and agent errors as attributes.
 - **Backups** — number of logical backups known across all agents.
-- **Latest backup** — latest logical backup ID with full metadata as attributes, including the agents that hold it.
+- **Latest backup** — latest logical backup ID with metadata and the agents that hold it.
+- **Backup agents healthy** — binary sensor that is on when at least one Backup Agent is registered and the last Backup Manager listing returned no per-agent errors.
 
 ## Installation with HACS
 
@@ -88,7 +97,7 @@ The integration deliberately keeps all Home Assistant Backup Manager calls in `a
 - All actions are registered as **admin-only** services.
 - `create` validates every requested Backup Agent before starting.
 - `create` waits for completion and verifies every requested copy.
-- `delete` first verifies the backup exists, performs the Home Assistant Backup Manager deletion, then verifies the requested copies are gone.
+- `delete` asks Backup Manager to delete the backup from all or selected agents and fails if Backup Manager reports any per-agent deletion error. Multi-agent deletion is not transactional; retrying the same backup ID is safe because already-missing copies are ignored by Backup Manager.
 - Backup credentials for cloud agents remain owned by their respective Home Assistant integrations.
 - No long-lived access token is required by this integration.
 
