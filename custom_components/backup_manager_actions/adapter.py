@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
+from uuid import uuid4
 
 from homeassistant.components.backup import (
     BackupManager,
@@ -12,6 +14,12 @@ from homeassistant.components.backup import (
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
+
+
+METADATA_MANAGED = "backup_manager_actions.managed"
+METADATA_CORRELATION_ID = "backup_manager_actions.correlation_id"
+CREATE_VERIFY_ATTEMPTS = 5
+CREATE_VERIFY_DELAY_SECONDS = 1.0
 
 
 class BackupManagerActionsError(HomeAssistantError):
@@ -76,8 +84,13 @@ class BackupManagerActionsAdapter:
         )
 
         manager = self.manager
+        correlation_id = uuid4().hex
         new_backup = await manager.async_create_backup(
             agent_ids=agent_ids,
+            extra_metadata={
+                METADATA_MANAGED: True,
+                METADATA_CORRELATION_ID: correlation_id,
+            },
             include_addons=include_addons,
             include_all_addons=include_all_addons,
             include_database=include_database,
@@ -87,14 +100,58 @@ class BackupManagerActionsAdapter:
             password=password,
         )
 
-        backup_id = new_backup.backup_job_id
-        backup, agent_errors = await manager.async_get_backup(backup_id)
-        if backup is None:
-            raise BackupManagerActionsError(
-                f"Backup {backup_id} was created but could not be read back"
+        # Home Assistant returns a Supervisor job id here, not the final backup id.
+        # Correlate the completed backup through metadata written into the archive.
+        requested = set(agent_ids)
+        backup: ManagerBackup | None = None
+        agent_errors: dict[str, Exception] = {}
+
+        for attempt in range(CREATE_VERIFY_ATTEMPTS):
+            backups, agent_errors = await manager.async_get_backups()
+            backup = next(
+                (
+                    item
+                    for item in backups.values()
+                    if item.extra_metadata.get(METADATA_CORRELATION_ID)
+                    == correlation_id
+                ),
+                None,
             )
 
-        requested = set(agent_ids)
+            relevant_errors = {
+                agent_id: str(error)
+                for agent_id, error in agent_errors.items()
+                if agent_id in requested
+            }
+            if backup is not None:
+                stored_agent_ids = set(backup.agents)
+                if requested.issubset(stored_agent_ids) and not relevant_errors:
+                    break
+
+            if attempt < CREATE_VERIFY_ATTEMPTS - 1:
+                await asyncio.sleep(CREATE_VERIFY_DELAY_SECONDS)
+
+        if backup is None:
+            relevant_errors = {
+                agent_id: str(error)
+                for agent_id, error in agent_errors.items()
+                if agent_id in requested
+            }
+            detail = (
+                "; agent errors: "
+                + "; ".join(
+                    f"{agent_id}: {message}"
+                    for agent_id, message in sorted(relevant_errors.items())
+                )
+                if relevant_errors
+                else ""
+            )
+            raise BackupManagerActionsError(
+                "Backup job "
+                f"{new_backup.backup_job_id} completed but the final backup "
+                f"could not be correlated{detail}"
+            )
+
         stored_agent_ids = sorted(backup.agents)
         missing_agent_ids = sorted(requested - set(stored_agent_ids))
         relevant_errors = {
@@ -118,13 +175,14 @@ class BackupManagerActionsAdapter:
                     )
                 )
             raise BackupManagerActionsError(
-                f"Backup {backup_id} did not complete on every requested agent ("
+                f"Backup {backup.backup_id} did not complete on every requested agent ("
                 + " | ".join(details)
                 + ")"
             )
 
         return {
             "backup_id": backup.backup_id,
+            "backup_job_id": new_backup.backup_job_id,
             "name": backup.name,
             "date": backup.date,
             "requested_agent_ids": list(agent_ids),

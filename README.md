@@ -39,7 +39,7 @@ data:
 response_variable: backup_result
 ```
 
-When a response is requested, it contains the `backup_id`, backup name, requested/stored agents, and per-agent size/protection information.
+When a response is requested, it contains the final `backup_id`, the Supervisor `backup_job_id`, backup name, requested/stored agents, and per-agent size/protection information. Backups created by this integration are tagged with internal correlation metadata so the final backup can be identified reliably after the Supervisor job completes.
 
 ### `backup_manager_actions.delete`
 
