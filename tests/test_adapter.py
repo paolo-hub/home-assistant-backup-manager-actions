@@ -116,7 +116,7 @@ class Manager:
             backup_id=backup_id,
             date="2026-09-27T20:00:00+02:00",
             database_included=kwargs["include_database"],
-            extra_metadata={"test": "yes"},
+            extra_metadata=dict(kwargs["extra_metadata"]),
             failed_addons=[],
             failed_agent_ids=[],
             failed_folders=[],
@@ -127,7 +127,7 @@ class Manager:
             with_automatic_settings=False,
             agents={agent_id: Status() for agent_id in self.create_agents},
         )
-        return NewBackup(backup_id)
+        return NewBackup("f6815a2f443f442bb89193410e2bb41f")
 
     async def async_get_backup(self, backup_id):
         return self.backups.get(backup_id), dict(self.lookup_errors)
@@ -182,7 +182,10 @@ async def test_create_success() -> None:
         password="secret",
     )
     assert result["backup_id"] == "abc12345"
+    assert result["backup_job_id"] == "f6815a2f443f442bb89193410e2bb41f"
     assert result["stored_agent_ids"] == ["cloud", "local"]
+    assert manager.backups["abc12345"].extra_metadata["backup_manager_actions.managed"] is True
+    assert "backup_manager_actions.correlation_id" in manager.backups["abc12345"].extra_metadata
     assert result["size_by_agent"] == {"local": 123, "cloud": 123}
 
 
