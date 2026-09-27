@@ -6,9 +6,9 @@ import asyncio
 from dataclasses import dataclass
 from enum import StrEnum
 import importlib.util
+from pathlib import Path
 import sys
 import types
-from pathlib import Path
 
 ROOT = Path(__file__).parents[1]
 MODULE = ROOT / "custom_components" / "backup_manager_actions" / "adapter.py"
@@ -22,12 +22,13 @@ class Folder(StrEnum):
 
 
 class HomeAssistantError(Exception):
-    pass
+    """Stub Home Assistant error."""
 
 
 backup_module = types.ModuleType("homeassistant.components.backup")
 backup_module.Folder = Folder
 backup_module.BackupManager = object
+backup_module.ManagerBackup = object
 backup_module.async_get_manager = lambda hass: hass.manager
 core_module = types.ModuleType("homeassistant.core")
 core_module.HomeAssistant = object
@@ -59,6 +60,13 @@ class Status:
 
 
 @dataclass
+class Addon:
+    slug: str
+    name: str | None = None
+    version: str | None = None
+
+
+@dataclass
 class Backup:
     addons: list
     backup_id: str
@@ -77,8 +85,9 @@ class Backup:
 
 
 class Agent:
-    def __init__(self, name: str) -> None:
+    def __init__(self, name: str, domain: str) -> None:
         self.name = name
+        self.domain = domain
 
 
 class NewBackup:
@@ -90,23 +99,24 @@ class Manager:
     def __init__(self) -> None:
         self.state = "idle"
         self.backup_agents = {
-            "local": Agent("Local"),
-            "cloud": Agent("Cloud"),
-            "third": Agent("Third"),
+            "local": Agent("Local", "hassio"),
+            "cloud": Agent("Cloud", "s3_compatible"),
+            "third": Agent("Third", "test"),
         }
         self.backups: dict[str, Backup] = {}
         self.create_agents = ["local", "cloud"]
         self.lookup_errors: dict[str, Exception] = {}
         self.delete_errors: dict[str, Exception] = {}
+        self.sticky_delete_agents: set[str] = set()
 
     async def async_create_backup(self, **kwargs):
         backup_id = "abc12345"
         self.backups[backup_id] = Backup(
-            addons=[],
+            addons=[Addon("core_mosquitto", "Mosquitto", "1.0")],
             backup_id=backup_id,
             date="2026-09-27T20:00:00+02:00",
             database_included=kwargs["include_database"],
-            extra_metadata={},
+            extra_metadata={"test": "yes"},
             failed_addons=[],
             failed_agent_ids=[],
             failed_folders=[],
@@ -129,19 +139,33 @@ class Manager:
         backup = self.backups.get(backup_id)
         if backup is None:
             return {}
-        if agent_ids is None:
+
+        targets = set(backup.agents) if agent_ids is None else set(agent_ids)
+        for agent_id in targets - self.sticky_delete_agents:
+            backup.agents.pop(agent_id, None)
+
+        if not backup.agents:
             self.backups.pop(backup_id, None)
-        else:
-            for agent_id in agent_ids:
-                backup.agents.pop(agent_id, None)
-            if not backup.agents:
-                self.backups.pop(backup_id, None)
+
         return dict(self.delete_errors)
 
 
 class Hass:
     def __init__(self, manager):
         self.manager = manager
+
+
+async def create_default_backup(adapter) -> None:
+    await adapter.async_create(
+        agent_ids=["local", "cloud"],
+        include_homeassistant=True,
+        include_database=True,
+        include_all_addons=False,
+        include_addons=None,
+        include_folders=None,
+        name=None,
+        password=None,
+    )
 
 
 async def test_create_success() -> None:
@@ -159,6 +183,7 @@ async def test_create_success() -> None:
     )
     assert result["backup_id"] == "abc12345"
     assert result["stored_agent_ids"] == ["cloud", "local"]
+    assert result["size_by_agent"] == {"local": 123, "cloud": 123}
 
 
 async def test_create_detects_missing_copy() -> None:
@@ -182,43 +207,6 @@ async def test_create_detects_missing_copy() -> None:
         raise AssertionError("Missing cloud copy should fail")
 
 
-async def test_delete_global() -> None:
-    manager = Manager()
-    adapter = BackupManagerActionsAdapter(Hass(manager))
-    await adapter.async_create(
-        agent_ids=["local", "cloud"],
-        include_homeassistant=True,
-        include_database=True,
-        include_all_addons=False,
-        include_addons=None,
-        include_folders=None,
-        name=None,
-        password=None,
-    )
-    result = await adapter.async_delete(backup_id="abc12345")
-    assert result["remaining_agent_ids"] == []
-    assert "abc12345" not in manager.backups
-
-
-async def test_delete_selected_copy() -> None:
-    manager = Manager()
-    adapter = BackupManagerActionsAdapter(Hass(manager))
-    await adapter.async_create(
-        agent_ids=["local", "cloud"],
-        include_homeassistant=True,
-        include_database=True,
-        include_all_addons=False,
-        include_addons=None,
-        include_folders=None,
-        name=None,
-        password=None,
-    )
-    result = await adapter.async_delete(
-        backup_id="abc12345", agent_ids=["cloud"]
-    )
-    assert result["remaining_agent_ids"] == ["local"]
-
-
 async def test_create_ignores_unrelated_agent_lookup_error() -> None:
     manager = Manager()
     manager.lookup_errors = {"third": RuntimeError("offline")}
@@ -234,6 +222,19 @@ async def test_create_ignores_unrelated_agent_lookup_error() -> None:
         password=None,
     )
     assert result["stored_agent_ids"] == ["cloud", "local"]
+
+
+async def test_create_rejects_requested_agent_lookup_error() -> None:
+    manager = Manager()
+    manager.lookup_errors = {"cloud": RuntimeError("cloud unreadable")}
+    adapter = BackupManagerActionsAdapter(Hass(manager))
+    try:
+        await create_default_backup(adapter)
+    except BackupManagerActionsError as err:
+        assert "agent errors" in str(err)
+        assert "cloud unreadable" in str(err)
+    else:
+        raise AssertionError("Requested agent lookup error should fail")
 
 
 async def test_create_rejects_unavailable_requested_agent() -> None:
@@ -256,40 +257,63 @@ async def test_create_rejects_unavailable_requested_agent() -> None:
         raise AssertionError("Unavailable requested agent should fail")
 
 
+async def test_delete_global() -> None:
+    manager = Manager()
+    adapter = BackupManagerActionsAdapter(Hass(manager))
+    await create_default_backup(adapter)
+    result = await adapter.async_delete(backup_id="abc12345")
+    assert result["remaining_agent_ids"] == []
+    assert "abc12345" not in manager.backups
+
+
+async def test_delete_selected_copy() -> None:
+    manager = Manager()
+    adapter = BackupManagerActionsAdapter(Hass(manager))
+    await create_default_backup(adapter)
+    result = await adapter.async_delete(
+        backup_id="abc12345",
+        agent_ids=["cloud"],
+    )
+    assert result["remaining_agent_ids"] == ["local"]
+
+
 async def test_delete_selected_ignores_unrelated_lookup_error() -> None:
     manager = Manager()
     adapter = BackupManagerActionsAdapter(Hass(manager))
-    await adapter.async_create(
-        agent_ids=["local", "cloud"],
-        include_homeassistant=True,
-        include_database=True,
-        include_all_addons=False,
-        include_addons=None,
-        include_folders=None,
-        name=None,
-        password=None,
-    )
+    await create_default_backup(adapter)
     manager.lookup_errors = {"third": RuntimeError("offline")}
     result = await adapter.async_delete(
-        backup_id="abc12345", agent_ids=["cloud"]
+        backup_id="abc12345",
+        agent_ids=["cloud"],
     )
     assert result["remaining_agent_ids"] == ["local"]
+
+
+async def test_delete_explicit_rejects_missing_agent_before_delete() -> None:
+    manager = Manager()
+    adapter = BackupManagerActionsAdapter(Hass(manager))
+    await create_default_backup(adapter)
+    manager.backup_agents.pop("cloud")
+
+    try:
+        await adapter.async_delete(
+            backup_id="abc12345",
+            agent_ids=["local", "cloud"],
+        )
+    except BackupManagerActionsError as err:
+        assert "Backup agent(s) not available: cloud" in str(err)
+    else:
+        raise AssertionError("Missing expected agent must block retention deletion")
+
+    assert set(manager.backups["abc12345"].agents) == {"local", "cloud"}
 
 
 async def test_delete_global_rejects_unverifiable_agent() -> None:
     manager = Manager()
     adapter = BackupManagerActionsAdapter(Hass(manager))
-    await adapter.async_create(
-        agent_ids=["local", "cloud"],
-        include_homeassistant=True,
-        include_database=True,
-        include_all_addons=False,
-        include_addons=None,
-        include_folders=None,
-        name=None,
-        password=None,
-    )
+    await create_default_backup(adapter)
     manager.lookup_errors = {"third": RuntimeError("offline")}
+
     try:
         await adapter.async_delete(backup_id="abc12345")
     except BackupManagerActionsError as err:
@@ -301,17 +325,9 @@ async def test_delete_global_rejects_unverifiable_agent() -> None:
 async def test_delete_reports_agent_error() -> None:
     manager = Manager()
     adapter = BackupManagerActionsAdapter(Hass(manager))
-    await adapter.async_create(
-        agent_ids=["local", "cloud"],
-        include_homeassistant=True,
-        include_database=True,
-        include_all_addons=False,
-        include_addons=None,
-        include_folders=None,
-        name=None,
-        password=None,
-    )
+    await create_default_backup(adapter)
     manager.delete_errors = {"cloud": RuntimeError("delete failed")}
+
     try:
         await adapter.async_delete(backup_id="abc12345")
     except BackupManagerActionsError as err:
@@ -320,16 +336,63 @@ async def test_delete_reports_agent_error() -> None:
         raise AssertionError("Agent deletion error should fail")
 
 
+async def test_delete_post_verification_detects_remaining_copy() -> None:
+    manager = Manager()
+    adapter = BackupManagerActionsAdapter(Hass(manager))
+    await create_default_backup(adapter)
+    manager.sticky_delete_agents = {"cloud"}
+
+    try:
+        await adapter.async_delete(
+            backup_id="abc12345",
+            agent_ids=["cloud"],
+        )
+    except BackupManagerActionsError as err:
+        assert "still exists on: cloud" in str(err)
+    else:
+        raise AssertionError("A copy that remains after delete must fail verification")
+
+
+async def test_snapshot_and_serialization() -> None:
+    manager = Manager()
+    adapter = BackupManagerActionsAdapter(Hass(manager))
+    await create_default_backup(adapter)
+
+    snapshot = await adapter.async_snapshot()
+    assert snapshot["state"] == "idle"
+    assert snapshot["agent_count"] == 3
+    assert snapshot["backup_count"] == 1
+    assert snapshot["agents"]["cloud"]["domain"] == "s3_compatible"
+    assert snapshot["latest_backup"]["backup_id"] == "abc12345"
+    assert snapshot["latest_backup"]["addons"][0]["slug"] == "core_mosquitto"
+
+
+async def test_list_and_get_backup() -> None:
+    manager = Manager()
+    adapter = BackupManagerActionsAdapter(Hass(manager))
+    await create_default_backup(adapter)
+
+    listing = await adapter.async_list_backups()
+    details = await adapter.async_get_backup("abc12345")
+    assert listing["backups"][0]["backup_id"] == "abc12345"
+    assert details["backup"]["agents"]["cloud"]["size"] == 123
+
+
 async def main() -> None:
     await test_create_success()
     await test_create_detects_missing_copy()
     await test_create_ignores_unrelated_agent_lookup_error()
+    await test_create_rejects_requested_agent_lookup_error()
     await test_create_rejects_unavailable_requested_agent()
     await test_delete_global()
     await test_delete_selected_copy()
     await test_delete_selected_ignores_unrelated_lookup_error()
+    await test_delete_explicit_rejects_missing_agent_before_delete()
     await test_delete_global_rejects_unverifiable_agent()
     await test_delete_reports_agent_error()
+    await test_delete_post_verification_detects_remaining_copy()
+    await test_snapshot_and_serialization()
+    await test_list_and_get_backup()
     print("adapter simulation: OK")
 
 
