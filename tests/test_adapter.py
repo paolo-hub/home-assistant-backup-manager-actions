@@ -51,6 +51,7 @@ spec.loader.exec_module(adapter_module)
 
 BackupManagerActionsAdapter = adapter_module.BackupManagerActionsAdapter
 BackupManagerActionsError = adapter_module.BackupManagerActionsError
+adapter_module.CREATE_VERIFY_DELAY_SECONDS = 0
 
 
 @dataclass
