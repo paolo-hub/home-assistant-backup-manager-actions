@@ -1,0 +1,85 @@
+{
+  "title": "Backup Manager Actions",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Backup Manager Actions",
+        "description": "Expose advanced Home Assistant Backup Manager operations to automations. No external credentials are required."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Only one Backup Manager Actions instance can be configured."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "backup_agents": {
+        "name": "Backup agents"
+      },
+      "backups": {
+        "name": "Backups"
+      },
+      "latest_backup": {
+        "name": "Latest backup"
+      }
+    }
+  },
+  "services": {
+    "create": {
+      "name": "Create backup",
+      "description": "Create one Home Assistant backup and store it on all selected Backup Agents.",
+      "fields": {
+        "agent_ids": {
+          "name": "Backup agents",
+          "description": "Backup Agent IDs that must receive the backup."
+        },
+        "include_homeassistant": {
+          "name": "Include Home Assistant",
+          "description": "Include the Home Assistant configuration in the backup."
+        },
+        "include_database": {
+          "name": "Include database",
+          "description": "Include the Home Assistant database when Home Assistant is included."
+        },
+        "include_all_addons": {
+          "name": "Include all add-ons",
+          "description": "Include every installed add-on. Do not combine with selected add-ons."
+        },
+        "include_addons": {
+          "name": "Selected add-ons",
+          "description": "Optional list of add-on slugs to include."
+        },
+        "include_folders": {
+          "name": "Folders",
+          "description": "Optional Home Assistant folders to include."
+        },
+        "name": {
+          "name": "Backup name",
+          "description": "Optional backup name. Home Assistant generates a default when omitted."
+        },
+        "password": {
+          "name": "Backup password",
+          "description": "Optional password used to protect the backup."
+        }
+      }
+    },
+    "delete": {
+      "name": "Delete backup",
+      "description": "Delete a backup from every Backup Agent, or only from explicitly selected agents.",
+      "fields": {
+        "backup_id": {
+          "name": "Backup ID",
+          "description": "Logical Home Assistant backup ID (formerly called slug)."
+        },
+        "agent_ids": {
+          "name": "Backup agents",
+          "description": "Optional agent IDs. Leave empty to delete the backup from every registered Backup Agent."
+        }
+      }
+    },
+    "refresh": {
+      "name": "Refresh backup information",
+      "description": "Refresh Backup Manager Actions sensors from Home Assistant's Backup Manager."
+    }
+  }
+}
