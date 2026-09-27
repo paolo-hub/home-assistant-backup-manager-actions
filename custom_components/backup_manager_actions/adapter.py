@@ -1,73 +1,305 @@
-"""Adapter around Home Assistant's native Backup Manager API."""
+"""Adapter around Home Assistant's Backup Manager public API."""
 
 from __future__ import annotations
+
+from typing import Any
 
 from homeassistant.components.backup import (
     BackupManager,
     Folder,
     ManagerBackup,
-    NewBackup,
     async_get_manager,
 )
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 
 
-class BackupManagerAdapter:
-    """Keep Home Assistant Backup Manager calls isolated in one place."""
+class BackupManagerActionsError(HomeAssistantError):
+    """Base error raised by Backup Manager Actions."""
+
+
+class BackupManagerActionsAdapter:
+    """Compatibility and safety layer around Home Assistant's Backup Manager."""
 
     def __init__(self, hass: HomeAssistant) -> None:
         """Initialize the adapter."""
-        self.manager: BackupManager = async_get_manager(hass)
+        self._hass = hass
 
     @property
-    def backup_agents(self):
-        """Return currently registered backup agents."""
-        return self.manager.backup_agents
+    def manager(self) -> BackupManager:
+        """Return Home Assistant's Backup Manager."""
+        return async_get_manager(self._hass)
 
-    async def async_create_backup(
+    def list_agents(self) -> dict[str, dict[str, str]]:
+        """Return currently registered backup agents keyed by agent id."""
+        return {
+            agent_id: {
+                "name": agent.name,
+                "domain": agent.domain,
+            }
+            for agent_id, agent in self.manager.backup_agents.items()
+        }
+
+    def validate_agent_ids(self, agent_ids: list[str]) -> None:
+        """Ensure all requested agents are currently registered."""
+        available = set(self.manager.backup_agents)
+        missing = sorted(set(agent_ids) - available)
+        if missing:
+            raise BackupManagerActionsError(
+                "Backup agent(s) not available: " + ", ".join(missing)
+            )
+
+    async def async_create(
         self,
         *,
         agent_ids: list[str],
-        include_addons: list[str] | None,
-        include_all_addons: bool,
-        include_database: bool,
-        include_folders: list[Folder] | None,
         include_homeassistant: bool,
+        include_database: bool,
+        include_all_addons: bool,
+        include_addons: list[str] | None,
+        include_folders: list[str] | None,
         name: str | None,
         password: str | None,
-    ) -> NewBackup:
-        """Create and wait for a custom backup."""
-        return await self.manager.async_create_backup(
+    ) -> dict[str, Any]:
+        """Create a backup and verify that every requested agent stored it."""
+        self.validate_agent_ids(agent_ids)
+
+        if include_all_addons and include_addons:
+            raise BackupManagerActionsError(
+                "include_all_addons and include_addons are mutually exclusive"
+            )
+
+        folders = (
+            [Folder(folder) for folder in include_folders]
+            if include_folders is not None
+            else None
+        )
+
+        manager = self.manager
+        new_backup = await manager.async_create_backup(
             agent_ids=agent_ids,
             include_addons=include_addons,
             include_all_addons=include_all_addons,
             include_database=include_database,
-            include_folders=include_folders,
+            include_folders=folders,
             include_homeassistant=include_homeassistant,
             name=name,
             password=password,
         )
 
-    async def async_get_backups(
-        self,
-    ) -> tuple[dict[str, ManagerBackup], dict[str, Exception]]:
-        """Return logical backups merged across agents."""
-        return await self.manager.async_get_backups()
+        backup_id = new_backup.backup_job_id
+        backup, agent_errors = await manager.async_get_backup(backup_id)
+        if backup is None:
+            raise BackupManagerActionsError(
+                f"Backup {backup_id} was created but could not be read back"
+            )
 
-    async def async_get_backup(
-        self, backup_id: str
-    ) -> tuple[ManagerBackup | None, dict[str, Exception]]:
-        """Return a logical backup by id."""
-        return await self.manager.async_get_backup(backup_id)
+        requested = set(agent_ids)
+        stored_agent_ids = sorted(backup.agents)
+        missing_agent_ids = sorted(requested - set(stored_agent_ids))
+        relevant_errors = {
+            agent_id: str(error)
+            for agent_id, error in agent_errors.items()
+            if agent_id in requested
+        }
 
-    async def async_delete_backup(
+        if missing_agent_ids or relevant_errors:
+            details: list[str] = []
+            if missing_agent_ids:
+                details.append(
+                    "missing agent copies: " + ", ".join(missing_agent_ids)
+                )
+            if relevant_errors:
+                details.append(
+                    "agent errors: "
+                    + "; ".join(
+                        f"{agent_id}: {message}"
+                        for agent_id, message in sorted(relevant_errors.items())
+                    )
+                )
+            raise BackupManagerActionsError(
+                f"Backup {backup_id} did not complete on every requested agent ("
+                + " | ".join(details)
+                + ")"
+            )
+
+        return {
+            "backup_id": backup.backup_id,
+            "name": backup.name,
+            "date": backup.date,
+            "requested_agent_ids": list(agent_ids),
+            "stored_agent_ids": stored_agent_ids,
+            "protected_by_agent": {
+                agent_id: status.protected
+                for agent_id, status in backup.agents.items()
+                if agent_id in requested
+            },
+            "size_by_agent": {
+                agent_id: status.size
+                for agent_id, status in backup.agents.items()
+                if agent_id in requested
+            },
+        }
+
+    async def async_delete(
         self,
-        backup_id: str,
         *,
+        backup_id: str,
         agent_ids: list[str] | None = None,
-    ) -> dict[str, Exception]:
-        """Delete a backup from all or selected agents."""
-        return await self.manager.async_delete_backup(
+    ) -> dict[str, Any]:
+        """Delete a backup globally or from selected agents, then verify it."""
+        manager = self.manager
+
+        if agent_ids is not None:
+            self.validate_agent_ids(agent_ids)
+            target_agent_ids = set(agent_ids)
+        else:
+            target_agent_ids = set(manager.backup_agents)
+
+        backup, lookup_errors = await manager.async_get_backup(backup_id)
+        relevant_lookup_errors = {
+            agent_id: error
+            for agent_id, error in lookup_errors.items()
+            if agent_ids is None or agent_id in target_agent_ids
+        }
+        if relevant_lookup_errors:
+            errors = "; ".join(
+                f"{agent_id}: {error}"
+                for agent_id, error in sorted(relevant_lookup_errors.items())
+            )
+            raise BackupManagerActionsError(
+                f"Could not safely inspect backup {backup_id}: {errors}"
+            )
+        if backup is None:
+            raise BackupManagerActionsError(f"Backup {backup_id} was not found")
+
+        existing_agent_ids = sorted(backup.agents)
+
+        delete_errors = await manager.async_delete_backup(
             backup_id,
             agent_ids=agent_ids,
         )
+        if delete_errors:
+            errors = "; ".join(
+                f"{agent_id}: {error}"
+                for agent_id, error in sorted(delete_errors.items())
+            )
+            raise BackupManagerActionsError(
+                f"Backup {backup_id} was not deleted cleanly: {errors}"
+            )
+
+        remaining, verify_errors = await manager.async_get_backup(backup_id)
+        relevant_verify_errors = {
+            agent_id: error
+            for agent_id, error in verify_errors.items()
+            if agent_ids is None or agent_id in target_agent_ids
+        }
+        if relevant_verify_errors:
+            errors = "; ".join(
+                f"{agent_id}: {error}"
+                for agent_id, error in sorted(relevant_verify_errors.items())
+            )
+            raise BackupManagerActionsError(
+                f"Backup {backup_id} deletion could not be verified: {errors}"
+            )
+
+        remaining_agent_ids = sorted(remaining.agents) if remaining else []
+        unexpectedly_remaining = sorted(
+            target_agent_ids.intersection(remaining_agent_ids)
+        )
+        if unexpectedly_remaining:
+            raise BackupManagerActionsError(
+                f"Backup {backup_id} still exists on: "
+                + ", ".join(unexpectedly_remaining)
+            )
+
+        return {
+            "backup_id": backup_id,
+            "target_agent_ids": sorted(target_agent_ids),
+            "previous_agent_ids": existing_agent_ids,
+            "remaining_agent_ids": remaining_agent_ids,
+        }
+
+    async def async_list_backups(self) -> dict[str, Any]:
+        """Return all logical backups known to Backup Manager."""
+        backups, agent_errors = await self.manager.async_get_backups()
+        ordered = sorted(backups.values(), key=lambda item: item.date, reverse=True)
+        return {
+            "backups": [self._backup_to_dict(backup) for backup in ordered],
+            "agent_errors": self._errors_to_dict(agent_errors),
+        }
+
+    async def async_get_backup(self, backup_id: str) -> dict[str, Any]:
+        """Return one logical backup by id."""
+        backup, agent_errors = await self.manager.async_get_backup(backup_id)
+        return {
+            "backup": self._backup_to_dict(backup) if backup is not None else None,
+            "agent_errors": self._errors_to_dict(agent_errors),
+        }
+
+    async def async_snapshot(self) -> dict[str, Any]:
+        """Return a normalized snapshot of Backup Manager state."""
+        manager = self.manager
+        backups, agent_errors = await manager.async_get_backups()
+        agents = self.list_agents()
+
+        ordered_backups = sorted(
+            backups.values(),
+            key=lambda item: item.date,
+            reverse=True,
+        )
+        latest = ordered_backups[0] if ordered_backups else None
+
+        return {
+            "state": str(manager.state),
+            "agent_count": len(agents),
+            "agents": agents,
+            "backup_count": len(backups),
+            "latest_backup": self._backup_to_dict(latest) if latest else None,
+            "agent_errors": self._errors_to_dict(agent_errors),
+        }
+
+    @staticmethod
+    def _errors_to_dict(errors: dict[str, Exception]) -> dict[str, str]:
+        """Convert per-agent errors to JSON-friendly strings."""
+        return {agent_id: str(error) for agent_id, error in errors.items()}
+
+    @staticmethod
+    def _backup_to_dict(backup: ManagerBackup) -> dict[str, Any]:
+        """Convert a ManagerBackup to JSON-friendly data."""
+        return {
+            "backup_id": backup.backup_id,
+            "name": backup.name,
+            "date": backup.date,
+            "homeassistant_version": backup.homeassistant_version,
+            "homeassistant_included": backup.homeassistant_included,
+            "database_included": backup.database_included,
+            "addons": [
+                {
+                    "slug": addon.slug,
+                    "name": addon.name,
+                    "version": addon.version,
+                }
+                for addon in backup.addons
+            ],
+            "folders": [folder.value for folder in backup.folders],
+            "agents": {
+                agent_id: {
+                    "protected": status.protected,
+                    "size": status.size,
+                }
+                for agent_id, status in backup.agents.items()
+            },
+            "failed_addons": [
+                {
+                    "slug": addon.slug,
+                    "name": addon.name,
+                    "version": addon.version,
+                }
+                for addon in backup.failed_addons
+            ],
+            "failed_agent_ids": list(backup.failed_agent_ids),
+            "failed_folders": [folder.value for folder in backup.failed_folders],
+            "with_automatic_settings": backup.with_automatic_settings,
+            "extra_metadata": dict(backup.extra_metadata),
+        }

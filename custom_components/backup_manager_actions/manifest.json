@@ -1,9 +1,7 @@
 {
   "domain": "backup_manager_actions",
   "name": "Backup Manager Actions",
-  "version": "0.1.0",
-  "documentation": "https://github.com/paolo-hub/home-assistant-backup-manager-actions",
-  "issue_tracker": "https://github.com/paolo-hub/home-assistant-backup-manager-actions/issues",
+  "version": "0.1.0-alpha.1",
   "codeowners": [
     "@paolo-hub"
   ],
@@ -12,6 +10,8 @@
   "dependencies": [
     "backup"
   ],
+  "documentation": "https://github.com/paolo-hub/home-assistant-backup-manager-actions",
+  "issue_tracker": "https://github.com/paolo-hub/home-assistant-backup-manager-actions/issues",
   "integration_type": "service",
   "iot_class": "local_push",
   "requirements": []

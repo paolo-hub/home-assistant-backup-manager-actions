@@ -8,45 +8,41 @@ create:
       selector:
         text:
           multiple: true
-    name:
-      required: false
-      example: "Backup 2026-09-27"
-      selector:
-        text:
     include_homeassistant:
-      required: false
       default: true
       selector:
         boolean:
     include_database:
-      required: false
       default: true
       selector:
         boolean:
     include_all_addons:
-      required: false
       default: false
       selector:
         boolean:
     include_addons:
-      required: false
       example:
         - core_mosquitto
       selector:
         text:
           multiple: true
     include_folders:
-      required: false
       selector:
         select:
           multiple: true
           options:
-            - share
-            - addons/local
-            - ssl
-            - media
+            - label: Share
+              value: share
+            - label: Local add-ons
+              value: addons/local
+            - label: SSL
+              value: ssl
+            - label: Media
+              value: media
+    name:
+      selector:
+        text:
     password:
-      required: false
       selector:
         text:
           type: password
@@ -55,17 +51,16 @@ delete:
   fields:
     backup_id:
       required: true
-      example: "abc12345"
       selector:
         text:
     agent_ids:
-      required: false
-      example:
-        - hassio.local
-        - s3_compatible.example
       selector:
         text:
           multiple: true
+
+refresh: {}
+
+list_agents: {}
 
 list_backups: {}
 
@@ -73,8 +68,5 @@ get_backup:
   fields:
     backup_id:
       required: true
-      example: "abc12345"
       selector:
         text:
-
-list_agents: {}

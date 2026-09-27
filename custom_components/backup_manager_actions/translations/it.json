@@ -4,25 +4,39 @@
     "step": {
       "user": {
         "title": "Backup Manager Actions",
-        "description": "Espone alle automazioni e agli script le operazioni avanzate del Backup Manager di Home Assistant. Non richiede credenziali né configurazioni di servizi esterni."
+        "description": "Espone alle automazioni le funzioni avanzate del Backup Manager di Home Assistant. Non sono richieste credenziali esterne."
       }
     },
     "abort": {
-      "single_instance_allowed": "Può essere configurata una sola istanza di Backup Manager Actions."
+      "single_instance_allowed": "È possibile configurare una sola istanza di Backup Manager Actions."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "backup_agents": {
+        "name": "Destinazioni backup"
+      },
+      "backups": {
+        "name": "Backup"
+      },
+      "latest_backup": {
+        "name": "Ultimo backup"
+      }
+    },
+    "binary_sensor": {
+      "backup_agents_healthy": {
+        "name": "Backup Agent disponibili"
+      }
     }
   },
   "services": {
     "create": {
       "name": "Crea backup",
-      "description": "Crea un unico backup di Home Assistant e lo archivia sui Backup Agent selezionati.",
+      "description": "Crea un solo backup di Home Assistant e lo memorizza su tutti i Backup Agent selezionati.",
       "fields": {
         "agent_ids": {
-          "name": "Backup Agent",
-          "description": "ID esatti dei Backup Agent che devono ricevere il backup."
-        },
-        "name": {
-          "name": "Nome",
-          "description": "Nome visualizzato opzionale del backup."
+          "name": "Destinazioni backup",
+          "description": "ID dei Backup Agent che devono ricevere il backup."
         },
         "include_homeassistant": {
           "name": "Includi Home Assistant",
@@ -30,7 +44,7 @@
         },
         "include_database": {
           "name": "Includi database",
-          "description": "Include il database di Home Assistant nel backup."
+          "description": "Include il database di Home Assistant quando Home Assistant è incluso."
         },
         "include_all_addons": {
           "name": "Includi tutti gli add-on",
@@ -38,31 +52,43 @@
         },
         "include_addons": {
           "name": "Add-on selezionati",
-          "description": "Slug degli add-on da includere quando non si includono tutti gli add-on."
+          "description": "Elenco opzionale degli slug degli add-on da includere."
         },
         "include_folders": {
           "name": "Cartelle",
-          "description": "Cartelle Supervisor da includere nel backup."
+          "description": "Cartelle opzionali da includere nel backup."
+        },
+        "name": {
+          "name": "Nome backup",
+          "description": "Nome opzionale del backup. Se omesso, Home Assistant genera il nome predefinito."
         },
         "password": {
-          "name": "Password",
-          "description": "Password opzionale per la cifratura del backup. Il valore non viene memorizzato da questa integrazione."
+          "name": "Password backup",
+          "description": "Password opzionale usata per proteggere il backup."
         }
       }
     },
     "delete": {
       "name": "Elimina backup",
-      "description": "Elimina un backup per ID da tutti gli agent registrati, oppure da un insieme esplicito di agent.",
+      "description": "Elimina un backup da tutti i Backup Agent registrati oppure solo dalle destinazioni selezionate.",
       "fields": {
         "backup_id": {
           "name": "ID backup",
-          "description": "ID (slug) del backup da eliminare."
+          "description": "ID logico del backup di Home Assistant (in precedenza chiamato slug)."
         },
         "agent_ids": {
-          "name": "Backup Agent",
-          "description": "ID agent opzionali. Se omessi vengono usati tutti gli agent attualmente registrati."
+          "name": "Destinazioni backup",
+          "description": "ID opzionali dei Backup Agent. Per una retention rigorosa indica tutte le destinazioni attese, così un agent mancante blocca la cancellazione."
         }
       }
+    },
+    "refresh": {
+      "name": "Aggiorna informazioni backup",
+      "description": "Aggiorna i sensori dell'integrazione e, se richiesto, restituisce lo stato corrente del Backup Manager."
+    },
+    "list_agents": {
+      "name": "Elenca Backup Agent",
+      "description": "Restituisce tutti i Backup Agent attualmente registrati in Home Assistant."
     },
     "list_backups": {
       "name": "Elenca backup",
@@ -74,30 +100,8 @@
       "fields": {
         "backup_id": {
           "name": "ID backup",
-          "description": "ID (slug) del backup da ispezionare."
+          "description": "ID logico del backup di Home Assistant da ispezionare."
         }
-      }
-    },
-    "list_agents": {
-      "name": "Elenca Backup Agent",
-      "description": "Restituisce tutti i Backup Agent attualmente registrati in Home Assistant."
-    }
-  },
-  "entity": {
-    "sensor": {
-      "backup_count": {
-        "name": "Numero backup"
-      },
-      "agent_count": {
-        "name": "Numero Backup Agent"
-      },
-      "latest_backup": {
-        "name": "Ultimo backup"
-      }
-    },
-    "binary_sensor": {
-      "backup_agents_healthy": {
-        "name": "Backup Agent disponibili"
       }
     }
   }
