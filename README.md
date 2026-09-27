@@ -39,7 +39,7 @@ data:
 response_variable: backup_result
 ```
 
-When a response is requested, it contains the `backup_id`, backup name, requested/stored agents, and any per-agent lookup errors.
+When a response is requested, it contains the `backup_id`, backup name, requested/stored agents, and per-agent size/protection information.
 
 ### `backup_manager_actions.delete`
 
@@ -49,10 +49,17 @@ Deletes one logical backup. When `agent_ids` is omitted, Home Assistant's Backup
 action: backup_manager_actions.delete
 data:
   backup_id: "abc12345"
+  agent_ids:
+    - hassio.local
+    - s3_compatible.example
 response_variable: delete_result
 ```
 
-An optional `agent_ids` list can be supplied to remove only selected copies.
+For retention jobs, explicitly supply every expected destination. This makes the action fail closed if, for example, the cloud integration is temporarily not registered. Deletion is idempotent: a backup that is already absent is treated as an already-satisfied result, provided the requested agents are verifiable.
+
+### `backup_manager_actions.refresh`
+
+Refreshes the integration sensors from Backup Manager and can optionally return the current snapshot.
 
 ### `backup_manager_actions.list_agents`
 
@@ -97,7 +104,7 @@ The integration deliberately keeps all Home Assistant Backup Manager calls in `a
 - All actions are registered as **admin-only** services.
 - `create` validates every requested Backup Agent before starting.
 - `create` waits for completion and verifies every requested copy.
-- `delete` asks Backup Manager to delete the backup from all or selected agents and fails if Backup Manager reports any per-agent deletion error. Multi-agent deletion is not transactional; retrying the same backup ID is safe because already-missing copies are ignored by Backup Manager.
+- `delete` performs a pre-flight read, validates explicitly requested agents, calls Backup Manager, then reads back the backup to verify the requested copies disappeared. Multi-agent deletion is not transactional, so a partial provider failure can still remove some copies; the action reports failure and can safely be retried.
 - Backup credentials for cloud agents remain owned by their respective Home Assistant integrations.
 - No long-lived access token is required by this integration.
 
