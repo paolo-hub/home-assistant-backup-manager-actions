@@ -6,11 +6,7 @@ from collections.abc import Callable
 import logging
 from typing import Any
 
-from homeassistant.components.backup import (
-    BackupPlatformEvent,
-    IdleEvent,
-    ManagerStateEvent,
-)
+from homeassistant.components.backup import BackupPlatformEvent, IdleEvent
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
@@ -53,7 +49,7 @@ class BackupManagerActionsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         manager = self.adapter.manager
 
         @callback
-        def _on_backup_event(event: ManagerStateEvent) -> None:
+        def _on_backup_event(event: Any) -> None:
             if isinstance(event, IdleEvent):
                 self.hass.async_create_task(self.async_request_refresh())
 
