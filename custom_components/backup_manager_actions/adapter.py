@@ -171,7 +171,13 @@ class BackupManagerActionsAdapter:
                 f"Could not safely inspect backup {backup_id}: {errors}"
             )
         if backup is None:
-            raise BackupManagerActionsError(f"Backup {backup_id} was not found")
+            return {
+                "backup_id": backup_id,
+                "found_before_delete": False,
+                "target_agent_ids": sorted(target_agent_ids),
+                "previous_agent_ids": [],
+                "remaining_agent_ids": [],
+            }
 
         existing_agent_ids = sorted(backup.agents)
 
@@ -215,6 +221,7 @@ class BackupManagerActionsAdapter:
 
         return {
             "backup_id": backup_id,
+            "found_before_delete": True,
             "target_agent_ids": sorted(target_agent_ids),
             "previous_agent_ids": existing_agent_ids,
             "remaining_agent_ids": remaining_agent_ids,
