@@ -6,12 +6,15 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
 
 from .adapter import BackupManagerActionsAdapter
 from .const import DATA_ADAPTER, DATA_COORDINATORS, DOMAIN, PLATFORMS
 from .coordinator import BackupManagerActionsCoordinator
 from .services import async_setup_services
+
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 
 async def async_setup(hass: HomeAssistant, _config: ConfigType) -> bool:
