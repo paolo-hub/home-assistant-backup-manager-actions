@@ -17,9 +17,6 @@ jobs:
         uses: hacs/action@main
         with:
           category: integration
-          # Repository metadata cannot be maintained from the integration code.
-          # Remove these ignores before requesting inclusion in HACS defaults.
-          ignore: description topics
 
   hassfest:
     runs-on: ubuntu-latest
