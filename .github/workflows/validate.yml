@@ -43,5 +43,9 @@ jobs:
         run: python -m compileall -q custom_components tests
       - name: Run inventory simulation
         run: python tests/test_inventory.py
+      - name: Run event tracker simulation
+        run: python tests/test_events.py
+      - name: Run coordinator event simulation
+        run: python tests/test_coordinator.py
       - name: Run adapter simulation
         run: python tests/test_adapter.py
