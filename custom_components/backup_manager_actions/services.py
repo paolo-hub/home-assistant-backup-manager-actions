@@ -22,27 +22,42 @@ from .adapter import BackupManagerActionsAdapter
 from .const import (
     CONF_AGENT_IDS,
     CONF_BACKUP_ID,
+    CONF_DAILY,
+    CONF_GROUP_BY,
     CONF_INCLUDE_ADDONS,
     CONF_INCLUDE_ALL_ADDONS,
     CONF_INCLUDE_DATABASE,
     CONF_INCLUDE_FOLDERS,
     CONF_INCLUDE_HOMEASSISTANT,
     CONF_JOB_ID,
+    CONF_KEEP_LAST,
+    CONF_MONTHLY,
     CONF_NAME,
     CONF_PASSWORD,
+    CONF_SOURCE_TYPE,
+    CONF_WEEKLY,
+    CONF_YEARLY,
     DATA_COORDINATORS,
     DOMAIN,
     EVENT_BACKUP_CREATED,
+    SERVICE_APPLY_RETENTION,
     SERVICE_CREATE,
     SERVICE_DELETE,
     SERVICE_GET_BACKUP,
     SERVICE_LIST_AGENTS,
     SERVICE_LIST_BACKUPS,
+    SERVICE_PLAN_RETENTION,
     SERVICE_REFRESH,
 )
 from .coordinator import BackupManagerActionsCoordinator
 from .events import BackupCreatedEventTracker
-from .inventory import normalize_job_id
+from .inventory import (
+    SOURCE_APP_UPDATE,
+    SOURCE_BMA,
+    SOURCE_HA_NATIVE,
+    normalize_job_id,
+)
+from .retention import APP_GROUP_BY_ALL, APP_GROUP_BY_APP
 
 
 def _non_empty_unique_strings(value: list[str]) -> list[str]:
@@ -70,6 +85,19 @@ def _job_id(value: str) -> str:
         raise vol.Invalid(
             "job_id must match ^[a-z0-9][a-z0-9_-]{0,63}$"
         )
+    return normalized
+
+
+def _non_negative_int(value: Any) -> int:
+    """Normalize a retention counter and reject booleans/negative values."""
+    if isinstance(value, bool):
+        raise vol.Invalid("Retention counters must be integers >= 0")
+    try:
+        normalized = int(value)
+    except (TypeError, ValueError) as err:
+        raise vol.Invalid("Retention counters must be integers >= 0") from err
+    if normalized < 0:
+        raise vol.Invalid("Retention counters must be integers >= 0")
     return normalized
 
 
@@ -120,6 +148,25 @@ GET_BACKUP_SCHEMA = vol.Schema(
             str.strip,
             vol.Length(min=1),
         ),
+    }
+)
+
+
+RETENTION_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_SOURCE_TYPE): vol.In(
+            [SOURCE_BMA, SOURCE_HA_NATIVE, SOURCE_APP_UPDATE]
+        ),
+        vol.Optional(CONF_JOB_ID): vol.All(cv.string, _job_id),
+        vol.Optional(CONF_GROUP_BY): vol.In(
+            [APP_GROUP_BY_APP, APP_GROUP_BY_ALL]
+        ),
+        vol.Optional(CONF_AGENT_IDS): AGENT_IDS_SCHEMA,
+        vol.Optional(CONF_KEEP_LAST, default=0): _non_negative_int,
+        vol.Optional(CONF_DAILY, default=0): _non_negative_int,
+        vol.Optional(CONF_WEEKLY, default=0): _non_negative_int,
+        vol.Optional(CONF_MONTHLY, default=0): _non_negative_int,
+        vol.Optional(CONF_YEARLY, default=0): _non_negative_int,
     }
 )
 
@@ -203,6 +250,34 @@ def async_setup_services(
     async def _handle_get_backup(call: ServiceCall) -> ServiceResponse:
         return await adapter.async_get_backup(call.data[CONF_BACKUP_ID])
 
+    async def _handle_plan_retention(call: ServiceCall) -> ServiceResponse:
+        return await adapter.async_plan_retention(
+            source_type=call.data[CONF_SOURCE_TYPE],
+            job_id=call.data.get(CONF_JOB_ID),
+            group_by=call.data.get(CONF_GROUP_BY),
+            agent_ids=call.data.get(CONF_AGENT_IDS),
+            keep_last=call.data[CONF_KEEP_LAST],
+            daily=call.data[CONF_DAILY],
+            weekly=call.data[CONF_WEEKLY],
+            monthly=call.data[CONF_MONTHLY],
+            yearly=call.data[CONF_YEARLY],
+        )
+
+    async def _handle_apply_retention(call: ServiceCall) -> ServiceResponse:
+        result = await adapter.async_apply_retention(
+            source_type=call.data[CONF_SOURCE_TYPE],
+            job_id=call.data.get(CONF_JOB_ID),
+            group_by=call.data.get(CONF_GROUP_BY),
+            agent_ids=call.data.get(CONF_AGENT_IDS),
+            keep_last=call.data[CONF_KEEP_LAST],
+            daily=call.data[CONF_DAILY],
+            weekly=call.data[CONF_WEEKLY],
+            monthly=call.data[CONF_MONTHLY],
+            yearly=call.data[CONF_YEARLY],
+        )
+        await _async_refresh_coordinators(hass)
+        return result
+
     async_register_admin_service(
         hass,
         DOMAIN,
@@ -246,5 +321,21 @@ def async_setup_services(
         SERVICE_GET_BACKUP,
         _handle_get_backup,
         schema=GET_BACKUP_SCHEMA,
+        supports_response=SupportsResponse.ONLY,
+    )
+    async_register_admin_service(
+        hass,
+        DOMAIN,
+        SERVICE_PLAN_RETENTION,
+        _handle_plan_retention,
+        schema=RETENTION_SCHEMA,
+        supports_response=SupportsResponse.ONLY,
+    )
+    async_register_admin_service(
+        hass,
+        DOMAIN,
+        SERVICE_APPLY_RETENTION,
+        _handle_apply_retention,
+        schema=RETENTION_SCHEMA,
         supports_response=SupportsResponse.ONLY,
     )
