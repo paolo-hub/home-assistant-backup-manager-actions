@@ -23,6 +23,7 @@ from .inventory import (
     METADATA_JOB_ID,
     METADATA_MANAGED,
     METADATA_VERSION,
+    SOURCE_APP_UPDATE,
     SOURCE_BMA,
     aggregate_inventory,
     normalize_backup,
@@ -44,6 +45,7 @@ class BackupManagerActionsAdapter:
     def __init__(self, hass: HomeAssistant) -> None:
         """Initialize the adapter."""
         self._hass = hass
+        self._retention_lock = asyncio.Lock()
 
     @property
     def manager(self) -> BackupManager:
@@ -348,10 +350,10 @@ class BackupManagerActionsAdapter:
         if backup.get("source_type") != scope["source_type"]:
             return False
 
-        if scope["source_type"] == "bma":
+        if scope["source_type"] == SOURCE_BMA:
             return backup.get("job_id") == scope["job_id"]
 
-        if scope["source_type"] == "app_update" and scope["group_by"] == "app":
+        if scope["source_type"] == SOURCE_APP_UPDATE and scope["group_by"] == "app":
             return backup.get("app_slug") == candidate["group"]
 
         return True
@@ -439,6 +441,35 @@ class BackupManagerActionsAdapter:
         now: datetime | None = None,
     ) -> dict[str, Any]:
         """Recalculate current retention state, delete, and verify candidates."""
+        async with self._retention_lock:
+            return await self._async_apply_retention_locked(
+                source_type=source_type,
+                job_id=job_id,
+                group_by=group_by,
+                agent_ids=agent_ids,
+                keep_last=keep_last,
+                daily=daily,
+                weekly=weekly,
+                monthly=monthly,
+                yearly=yearly,
+                now=now,
+            )
+
+    async def _async_apply_retention_locked(
+        self,
+        *,
+        source_type: str,
+        job_id: str | None,
+        group_by: str | None,
+        agent_ids: list[str] | None,
+        keep_last: int,
+        daily: int,
+        weekly: int,
+        monthly: int,
+        yearly: int,
+        now: datetime | None,
+    ) -> dict[str, Any]:
+        """Execute one serialized retention apply operation."""
         # Never accept or execute a cached plan. Always recalculate from the
         # current Backup Manager inventory immediately before deletion.
         plan = await self.async_plan_retention(
