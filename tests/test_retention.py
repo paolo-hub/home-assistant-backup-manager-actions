@@ -102,6 +102,22 @@ def find_item(items, backup_id):
     return next(item for item in items if item["backup_id"] == backup_id)
 
 
+def test_public_counter_normalization() -> None:
+    """Accept integer-like values but never truncate fractional policy values."""
+    assert retention.normalize_retention_counter(0) == 0
+    assert retention.normalize_retention_counter(3) == 3
+    assert retention.normalize_retention_counter(3.0) == 3
+    assert retention.normalize_retention_counter(" 4 ") == 4
+
+    for invalid in (True, -1, 1.5, "1.5", "abc", ""):
+        try:
+            retention.normalize_retention_counter(invalid)
+        except retention.RetentionPolicyError as err:
+            assert "integers >= 0" in str(err)
+        else:
+            raise AssertionError(f"Invalid counter value accepted: {invalid!r}")
+
+
 def test_policy_validation() -> None:
     """Reject unsafe or contradictory policy combinations."""
     try:
@@ -609,6 +625,7 @@ def test_invalid_target_date_fails_closed() -> None:
 
 
 def main() -> None:
+    test_public_counter_normalization()
     test_policy_validation()
     test_keep_last_and_equal_date_tie_break()
     test_daily_calendar_buckets_and_no_backfill()
