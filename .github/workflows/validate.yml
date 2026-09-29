@@ -49,5 +49,7 @@ jobs:
         run: python tests/test_coordinator.py
       - name: Run sensor simulation
         run: python tests/test_sensor.py
+      - name: Run retention planner simulation
+        run: python tests/test_retention.py
       - name: Run adapter simulation
         run: python tests/test_adapter.py
