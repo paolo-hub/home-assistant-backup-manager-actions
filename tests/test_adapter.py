@@ -286,6 +286,36 @@ def add_bma_backup(
     )
 
 
+def add_raw_backup(
+    manager,
+    backup_id,
+    date,
+    *,
+    metadata=None,
+    automatic=False,
+    agents=None,
+):
+    """Insert one raw Backup Manager-style backup into the manager stub."""
+    manager.backups[backup_id] = Backup(
+        addons=[],
+        backup_id=backup_id,
+        date=date,
+        database_included=True,
+        extra_metadata=dict(metadata or {}),
+        failed_addons=[],
+        failed_agent_ids=[],
+        failed_folders=[],
+        folders=[],
+        homeassistant_included=True,
+        homeassistant_version="2026.9.4",
+        name=backup_id,
+        with_automatic_settings=automatic,
+        agents=agents
+        if agents is not None
+        else {"local": Status(protected=False, size=100)},
+    )
+
+
 async def test_create_success() -> None:
     manager = Manager()
     adapter = BackupManagerActionsAdapter(Hass(manager))
@@ -1401,6 +1431,196 @@ async def test_apply_retention_failure_reports_prior_deletions() -> None:
     assert "keep" in manager.backups
 
 
+async def test_scenario_full_job_retention_isolated_from_other_sources() -> None:
+    """Exercise classification -> plan -> apply for one Full job policy."""
+    manager = Manager()
+    add_bma_backup(
+        manager,
+        "full-new",
+        "2026-09-29T10:00:00+02:00",
+        job_id="full",
+    )
+    add_bma_backup(
+        manager,
+        "full-old",
+        "2026-09-28T10:00:00+02:00",
+        job_id="full",
+    )
+    add_bma_backup(
+        manager,
+        "partial-old",
+        "2026-09-20T10:00:00+02:00",
+        job_id="partial",
+    )
+    add_raw_backup(
+        manager,
+        "native-old",
+        "2026-09-19T10:00:00+02:00",
+    )
+    add_raw_backup(
+        manager,
+        "app-old",
+        "2026-09-18T10:00:00+02:00",
+        metadata={"supervisor.addon_update": "core_mosquitto"},
+    )
+    add_raw_backup(
+        manager,
+        "unknown-conflict",
+        "2026-09-17T10:00:00+02:00",
+        metadata={
+            "backup_manager_actions.managed": True,
+            "supervisor.addon_update": "core_mosquitto",
+        },
+    )
+    adapter = BackupManagerActionsAdapter(Hass(manager))
+
+    result = await adapter.async_apply_retention(
+        source_type="bma",
+        job_id="full",
+        group_by=None,
+        agent_ids=["local"],
+        keep_last=1,
+        daily=0,
+        weekly=0,
+        monthly=0,
+        yearly=0,
+        now=adapter_module.datetime(
+            2026,
+            9,
+            29,
+            12,
+            0,
+            tzinfo=adapter_module.timezone.utc,
+        ),
+    )
+
+    assert [item["backup_id"] for item in result["plan"]["keep"]] == [
+        "full-new"
+    ]
+    assert [item["backup_id"] for item in result["plan"]["delete"]] == [
+        "full-old"
+    ]
+    assert result["execution"]["deleted_count"] == 1
+    assert set(manager.backups) == {
+        "full-new",
+        "partial-old",
+        "native-old",
+        "app-old",
+        "unknown-conflict",
+    }
+
+
+async def test_scenario_ha_native_manual_and_automatic_share_one_policy() -> None:
+    """Exercise HA Native retention without touching BMA or App Update."""
+    manager = Manager()
+    add_raw_backup(
+        manager,
+        "native-auto-new",
+        "2026-09-29T10:00:00+02:00",
+        automatic=True,
+    )
+    add_raw_backup(
+        manager,
+        "native-manual-old",
+        "2026-09-28T10:00:00+02:00",
+        automatic=False,
+    )
+    add_bma_backup(
+        manager,
+        "bma-old",
+        "2026-09-20T10:00:00+02:00",
+        job_id="full",
+    )
+    add_raw_backup(
+        manager,
+        "app-old",
+        "2026-09-19T10:00:00+02:00",
+        metadata={"supervisor.addon_update": "addon_a"},
+    )
+    adapter = BackupManagerActionsAdapter(Hass(manager))
+
+    result = await adapter.async_apply_retention(
+        source_type="ha_native",
+        job_id=None,
+        group_by=None,
+        agent_ids=["local"],
+        keep_last=1,
+        daily=0,
+        weekly=0,
+        monthly=0,
+        yearly=0,
+        now=adapter_module.datetime(
+            2026,
+            9,
+            29,
+            12,
+            0,
+            tzinfo=adapter_module.timezone.utc,
+        ),
+    )
+
+    assert [item["backup_id"] for item in result["plan"]["keep"]] == [
+        "native-auto-new"
+    ]
+    assert [item["backup_id"] for item in result["plan"]["delete"]] == [
+        "native-manual-old"
+    ]
+    assert set(manager.backups) == {
+        "native-auto-new",
+        "bma-old",
+        "app-old",
+    }
+
+
+async def test_scenario_app_update_per_app_is_independent_end_to_end() -> None:
+    """Exercise independent per-App retention through the adapter executor."""
+    manager = Manager()
+    for backup_id, date, slug in (
+        ("a-new", "2026-09-29T10:00:00+02:00", "addon_a"),
+        ("a-old", "2026-09-27T10:00:00+02:00", "addon_a"),
+        ("b-new", "2026-09-29T09:00:00+02:00", "addon_b"),
+        ("b-old", "2026-09-26T10:00:00+02:00", "addon_b"),
+    ):
+        add_raw_backup(
+            manager,
+            backup_id,
+            date,
+            metadata={"supervisor.addon_update": slug},
+        )
+    adapter = BackupManagerActionsAdapter(Hass(manager))
+
+    result = await adapter.async_apply_retention(
+        source_type="app_update",
+        job_id=None,
+        group_by="app",
+        agent_ids=["local"],
+        keep_last=1,
+        daily=0,
+        weekly=0,
+        monthly=0,
+        yearly=0,
+        now=adapter_module.datetime(
+            2026,
+            9,
+            29,
+            12,
+            0,
+            tzinfo=adapter_module.timezone.utc,
+        ),
+    )
+
+    assert {item["backup_id"] for item in result["plan"]["keep"]} == {
+        "a-new",
+        "b-new",
+    }
+    assert [item["backup_id"] for item in result["plan"]["delete"]] == [
+        "b-old",
+        "a-old",
+    ]
+    assert result["execution"]["deleted_count"] == 2
+    assert set(manager.backups) == {"a-new", "b-new"}
+
+
 async def test_apply_retention_is_serialized() -> None:
     manager = Manager()
     add_bma_backup(
@@ -1467,6 +1687,9 @@ async def test_apply_retention_is_serialized() -> None:
 
 
 async def main() -> None:
+    await test_scenario_full_job_retention_isolated_from_other_sources()
+    await test_scenario_ha_native_manual_and_automatic_share_one_policy()
+    await test_scenario_app_update_per_app_is_independent_end_to_end()
     await test_apply_retention_is_serialized()
     await test_apply_retention_recalculates_current_state()
     await test_apply_retention_preserves_out_of_scope_copies()
