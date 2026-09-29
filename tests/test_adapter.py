@@ -119,15 +119,19 @@ class Manager:
         self.lookup_errors: dict[str, Exception] = {}
         self.delete_errors: dict[str, Exception] = {}
         self.sticky_delete_agents: set[str] = set()
+        self.omit_metadata_keys: set[str] = set()
 
     async def async_create_backup(self, **kwargs):
         backup_id = "abc12345"
+        extra_metadata = dict(kwargs["extra_metadata"])
+        for key in self.omit_metadata_keys:
+            extra_metadata.pop(key, None)
         self.backups[backup_id] = Backup(
             addons=[Addon("core_mosquitto", "Mosquitto", "1.0")],
             backup_id=backup_id,
             date="2026-09-27T20:00:00+02:00",
             database_included=kwargs["include_database"],
-            extra_metadata=dict(kwargs["extra_metadata"]),
+            extra_metadata=extra_metadata,
             failed_addons=[],
             failed_agent_ids=[],
             failed_folders=[],
@@ -195,9 +199,159 @@ async def test_create_success() -> None:
     assert result["backup_id"] == "abc12345"
     assert result["backup_job_id"] == "f6815a2f443f442bb89193410e2bb41f"
     assert result["stored_agent_ids"] == ["cloud", "local"]
-    assert manager.backups["abc12345"].extra_metadata["backup_manager_actions.managed"] is True
-    assert "backup_manager_actions.correlation_id" in manager.backups["abc12345"].extra_metadata
+    metadata = manager.backups["abc12345"].extra_metadata
+    assert metadata["backup_manager_actions.managed"] is True
+    assert "backup_manager_actions.correlation_id" in metadata
+    assert metadata["backup_manager_actions.metadata_version"] == "1"
+    assert "backup_manager_actions.job_id" not in metadata
+    assert result["source_type"] == "bma"
+    assert result["job_id"] is None
+    assert result["metadata_version"] == 1
     assert result["size_by_agent"] == {"local": 123, "cloud": 123}
+
+
+async def test_create_with_full_job_id() -> None:
+    manager = Manager()
+    adapter = BackupManagerActionsAdapter(Hass(manager))
+    result = await adapter.async_create(
+        agent_ids=["local", "cloud"],
+        include_homeassistant=True,
+        include_database=True,
+        include_all_addons=False,
+        include_addons=None,
+        include_folders=None,
+        name="Full backup",
+        password=None,
+        job_id="full",
+    )
+
+    metadata = manager.backups["abc12345"].extra_metadata
+    assert metadata["backup_manager_actions.job_id"] == "full"
+    assert metadata["backup_manager_actions.metadata_version"] == "1"
+    assert result["source_type"] == "bma"
+    assert result["job_id"] == "full"
+    assert result["metadata_version"] == 1
+
+    listing = await adapter.async_list_backups()
+    assert listing["backups"][0]["job_id"] == "full"
+    assert listing["backups"][0]["classification_reason"] == "bma_managed"
+
+    snapshot = await adapter.async_snapshot()
+    assert snapshot["bma_by_job"] == {"full": 1}
+
+
+async def test_create_with_partial_job_id() -> None:
+    manager = Manager()
+    adapter = BackupManagerActionsAdapter(Hass(manager))
+    result = await adapter.async_create(
+        agent_ids=["local", "cloud"],
+        include_homeassistant=True,
+        include_database=True,
+        include_all_addons=False,
+        include_addons=["core_mosquitto"],
+        include_folders=["share"],
+        name="Partial backup",
+        password=None,
+        job_id="partial",
+    )
+
+    assert manager.backups["abc12345"].extra_metadata[
+        "backup_manager_actions.job_id"
+    ] == "partial"
+    assert result["job_id"] == "partial"
+
+
+async def test_create_normalizes_job_id() -> None:
+    manager = Manager()
+    adapter = BackupManagerActionsAdapter(Hass(manager))
+    result = await adapter.async_create(
+        agent_ids=["local", "cloud"],
+        include_homeassistant=True,
+        include_database=True,
+        include_all_addons=False,
+        include_addons=None,
+        include_folders=None,
+        name=None,
+        password=None,
+        job_id=" full ",
+    )
+
+    assert result["job_id"] == "full"
+    assert manager.backups["abc12345"].extra_metadata[
+        "backup_manager_actions.job_id"
+    ] == "full"
+
+
+async def test_create_rejects_invalid_job_id_before_creation() -> None:
+    manager = Manager()
+    adapter = BackupManagerActionsAdapter(Hass(manager))
+
+    try:
+        await adapter.async_create(
+            agent_ids=["local", "cloud"],
+            include_homeassistant=True,
+            include_database=True,
+            include_all_addons=False,
+            include_addons=None,
+            include_folders=None,
+            name=None,
+            password=None,
+            job_id="Full backup",
+        )
+    except BackupManagerActionsError as err:
+        assert "Invalid job_id" in str(err)
+    else:
+        raise AssertionError("Invalid job_id should fail")
+
+    assert manager.backups == {}
+
+
+async def test_create_verifies_metadata_version_persistence() -> None:
+    manager = Manager()
+    manager.omit_metadata_keys = {"backup_manager_actions.metadata_version"}
+    adapter = BackupManagerActionsAdapter(Hass(manager))
+
+    try:
+        await adapter.async_create(
+            agent_ids=["local", "cloud"],
+            include_homeassistant=True,
+            include_database=True,
+            include_all_addons=False,
+            include_addons=None,
+            include_folders=None,
+            name=None,
+            password=None,
+            job_id="full",
+        )
+    except BackupManagerActionsError as err:
+        assert "metadata verification failed" in str(err)
+        assert "metadata_version is None, expected 1" in str(err)
+    else:
+        raise AssertionError("Missing metadata_version should fail verification")
+
+
+async def test_create_verifies_job_id_persistence() -> None:
+    manager = Manager()
+    manager.omit_metadata_keys = {"backup_manager_actions.job_id"}
+    adapter = BackupManagerActionsAdapter(Hass(manager))
+
+    try:
+        await adapter.async_create(
+            agent_ids=["local", "cloud"],
+            include_homeassistant=True,
+            include_database=True,
+            include_all_addons=False,
+            include_addons=None,
+            include_folders=None,
+            name=None,
+            password=None,
+            job_id="full",
+        )
+    except BackupManagerActionsError as err:
+        assert "metadata verification failed" in str(err)
+        assert "job_id is None, expected full" in str(err)
+    else:
+        raise AssertionError("Missing job_id should fail verification")
 
 
 async def test_create_detects_missing_copy() -> None:
@@ -423,6 +577,12 @@ async def test_list_and_get_backup() -> None:
 
 async def main() -> None:
     await test_create_success()
+    await test_create_with_full_job_id()
+    await test_create_with_partial_job_id()
+    await test_create_normalizes_job_id()
+    await test_create_rejects_invalid_job_id_before_creation()
+    await test_create_verifies_metadata_version_persistence()
+    await test_create_verifies_job_id_persistence()
     await test_create_detects_missing_copy()
     await test_create_ignores_unrelated_agent_lookup_error()
     await test_create_rejects_requested_agent_lookup_error()
