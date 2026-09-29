@@ -251,6 +251,27 @@ def test_verified_bma_create_emits_after_early_inventory_visibility() -> None:
     assert tracker.process_complete_inventory([discovered_early]) == []
 
 
+def test_bma_visible_in_first_complete_snapshot_still_emits_after_verification() -> None:
+    """Startup baseline must not suppress an in-flight verified BMA create."""
+    tracker = events.BackupCreatedEventTracker()
+
+    in_flight = backup(
+        "bma-new",
+        "bma",
+        job_id="full",
+        date="2026-09-29T11:00:00+02:00",
+    )
+
+    assert tracker.process_complete_inventory([in_flight]) == []
+    assert tracker.baseline_ready is True
+
+    emitted = tracker.record_verified_bma_create(verified_create_result())
+    assert emitted is not None
+    assert emitted["backup_id"] == "bma-new"
+
+    assert tracker.record_verified_bma_create(verified_create_result()) is None
+
+
 def test_verified_bma_before_baseline_is_not_replayed() -> None:
     """A verified create can safely race with the coordinator first refresh."""
     tracker = events.BackupCreatedEventTracker()
@@ -276,6 +297,7 @@ def main() -> None:
     test_multiple_external_backups_emit_in_chronological_order()
     test_bma_and_unknown_discovery_do_not_emit_external_events()
     test_verified_bma_create_emits_after_early_inventory_visibility()
+    test_bma_visible_in_first_complete_snapshot_still_emits_after_verification()
     test_verified_bma_before_baseline_is_not_replayed()
     print("event tracker simulation: OK")
 
