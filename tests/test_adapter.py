@@ -772,6 +772,30 @@ async def test_snapshot_and_serialization() -> None:
     assert snapshot["archive_size"]["logical_size_bytes"] == 123
 
 
+async def test_snapshot_latest_uses_real_timestamp_across_offsets() -> None:
+    manager = Manager()
+    add_raw_backup(
+        manager,
+        "earlier-real-time",
+        "2026-10-25T02:30:00+02:00",
+    )
+    add_raw_backup(
+        manager,
+        "later-real-time",
+        "2026-10-25T02:15:00+01:00",
+    )
+    adapter = BackupManagerActionsAdapter(Hass(manager))
+
+    snapshot = await adapter.async_snapshot()
+    listing = await adapter.async_list_backups()
+
+    assert snapshot["latest_backup"]["backup_id"] == "later-real-time"
+    assert [item["backup_id"] for item in listing["backups"]] == [
+        "later-real-time",
+        "earlier-real-time",
+    ]
+
+
 async def test_list_and_get_backup() -> None:
     manager = Manager()
     adapter = BackupManagerActionsAdapter(Hass(manager))
@@ -1856,6 +1880,7 @@ async def main() -> None:
     await test_delete_reports_agent_error()
     await test_delete_post_verification_detects_remaining_copy()
     await test_snapshot_and_serialization()
+    await test_snapshot_latest_uses_real_timestamp_across_offsets()
     await test_list_and_get_backup()
     print("adapter simulation: OK")
 
