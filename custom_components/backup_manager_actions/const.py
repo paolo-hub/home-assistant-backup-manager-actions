@@ -22,6 +22,7 @@ CONF_INCLUDE_DATABASE = "include_database"
 CONF_INCLUDE_ALL_ADDONS = "include_all_addons"
 CONF_INCLUDE_ADDONS = "include_addons"
 CONF_INCLUDE_FOLDERS = "include_folders"
+CONF_JOB_ID = "job_id"
 CONF_NAME = "name"
 CONF_PASSWORD = "password"
 
