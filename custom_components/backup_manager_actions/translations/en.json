@@ -58,6 +58,10 @@
           "name": "Folders",
           "description": "Optional Home Assistant folders to include."
         },
+        "job_id": {
+          "name": "Job ID",
+          "description": "Optional stable BMA job identifier used to classify the backup, for example full or partial."
+        },
         "name": {
           "name": "Backup name",
           "description": "Optional backup name. Home Assistant generates a default when omitted."
