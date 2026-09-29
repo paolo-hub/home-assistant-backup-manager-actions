@@ -399,8 +399,8 @@ class BackupManagerActionsAdapter:
         *,
         candidate: dict[str, Any],
         scope: dict[str, Any],
-    ) -> list[str]:
-        """Revalidate one candidate immediately before destructive deletion."""
+    ) -> tuple[list[str], dict[str, Any] | None]:
+        """Revalidate one candidate and detect already-absent target copies."""
         scope_agent_ids = list(scope["agent_ids"])
         self.validate_agent_ids(scope_agent_ids)
 
@@ -423,10 +423,17 @@ class BackupManagerActionsAdapter:
             )
 
         if backup is None:
-            # Another actor already removed the logical backup. Passing the
-            # planned target agents to async_delete keeps verification
-            # idempotent and records found_before_delete=False.
-            return list(candidate["target_agent_ids"])
+            return (
+                list(candidate["target_agent_ids"]),
+                {
+                    "backup_id": candidate["backup_id"],
+                    "found_before_delete": False,
+                    "target_copies_found_before_delete": False,
+                    "target_agent_ids": list(candidate["target_agent_ids"]),
+                    "previous_agent_ids": [],
+                    "remaining_agent_ids": [],
+                },
+            )
 
         normalized = normalize_backup(backup)
         if not self._retention_candidate_matches_scope(
@@ -455,12 +462,21 @@ class BackupManagerActionsAdapter:
             )
 
         if not current_target_agent_ids:
-            # Target copies disappeared after planning. The delete operation
-            # remains idempotent using the original target set.
-            return list(candidate["target_agent_ids"])
+            remaining_agent_ids = sorted(normalized["agents"])
+            return (
+                list(candidate["target_agent_ids"]),
+                {
+                    "backup_id": candidate["backup_id"],
+                    "found_before_delete": True,
+                    "target_copies_found_before_delete": False,
+                    "target_agent_ids": list(candidate["target_agent_ids"]),
+                    "previous_agent_ids": remaining_agent_ids,
+                    "remaining_agent_ids": remaining_agent_ids,
+                },
+            )
 
         # Include copies that appeared on another in-scope agent after the plan.
-        return current_target_agent_ids
+        return current_target_agent_ids, None
 
     async def async_apply_retention(
         self,
@@ -506,8 +522,13 @@ class BackupManagerActionsAdapter:
         now: datetime | None,
     ) -> dict[str, Any]:
         """Execute one serialized retention apply operation."""
-        # Never accept or execute a cached plan. Always recalculate from the
-        # current Backup Manager inventory immediately before deletion.
+        # Freeze the policy clock for the whole apply operation. Replanning
+        # below must not change GFS buckets merely because execution crosses a
+        # clock or calendar boundary.
+        evaluated_at = now or datetime.now(timezone.utc)
+
+        # Never accept or execute a cached plan. Always calculate an initial
+        # plan from the current Backup Manager inventory.
         plan = await self.async_plan_retention(
             source_type=source_type,
             job_id=job_id,
@@ -518,25 +539,74 @@ class BackupManagerActionsAdapter:
             weekly=weekly,
             monthly=monthly,
             yearly=yearly,
-            now=now,
+            now=evaluated_at,
         )
 
         deleted: list[dict[str, Any]] = []
         for candidate in plan["delete"]:
             try:
-                target_agent_ids = await self._async_current_retention_targets(
-                    candidate=candidate,
-                    scope=plan["scope"],
+                # Re-evaluate the complete policy before every destructive
+                # candidate. This prevents a candidate from being deleted if
+                # concurrent changes promote it into keep_last or a GFS bucket
+                # after an earlier deletion.
+                current_plan = await self.async_plan_retention(
+                    source_type=source_type,
+                    job_id=job_id,
+                    group_by=group_by,
+                    agent_ids=agent_ids,
+                    keep_last=keep_last,
+                    daily=daily,
+                    weekly=weekly,
+                    monthly=monthly,
+                    yearly=yearly,
+                    now=evaluated_at,
                 )
+                current_candidate = next(
+                    (
+                        item
+                        for item in current_plan["delete"]
+                        if item["backup_id"] == candidate["backup_id"]
+                    ),
+                    None,
+                )
+
+                if current_candidate is None:
+                    (
+                        _target_agent_ids,
+                        already_absent_result,
+                    ) = await self._async_current_retention_targets(
+                        candidate=candidate,
+                        scope=current_plan["scope"],
+                    )
+                    if already_absent_result is not None:
+                        deleted.append(already_absent_result)
+                        continue
+                    raise BackupManagerActionsError(
+                        "candidate is no longer eligible for deletion after "
+                        "policy revalidation"
+                    )
+
+                (
+                    target_agent_ids,
+                    already_absent_result,
+                ) = await self._async_current_retention_targets(
+                    candidate=current_candidate,
+                    scope=current_plan["scope"],
+                )
+                if already_absent_result is not None:
+                    deleted.append(already_absent_result)
+                    continue
+
                 result = await self.async_delete(
                     backup_id=candidate["backup_id"],
                     agent_ids=target_agent_ids,
                 )
+                result["target_copies_found_before_delete"] = True
             except BackupManagerActionsError as err:
                 deleted_ids = [
                     item["backup_id"]
                     for item in deleted
-                    if item.get("found_before_delete") is not False
+                    if item.get("target_copies_found_before_delete") is True
                 ]
                 detail = (
                     "; deleted before failure: " + ", ".join(deleted_ids)
@@ -557,12 +627,12 @@ class BackupManagerActionsAdapter:
                 "deleted_count": sum(
                     1
                     for item in deleted
-                    if item.get("found_before_delete") is not False
+                    if item.get("target_copies_found_before_delete") is True
                 ),
                 "already_absent_count": sum(
                     1
                     for item in deleted
-                    if item.get("found_before_delete") is False
+                    if item.get("target_copies_found_before_delete") is False
                 ),
             },
         }
