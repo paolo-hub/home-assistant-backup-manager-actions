@@ -687,6 +687,7 @@ backup_manager_actions_backup_created
 For backups created through `backup_manager_actions.create`:
 
 - emit the event only after create verification has succeeded on every requested destination and BMA metadata verification has succeeded;
+- when a coordinator is loaded, request its refresh before publishing the verified BMA event so diagnostic state can catch up first;
 - a Backup Manager refresh may observe the logical backup before create verification finishes, but discovery alone must not emit a BMA-created event;
 - emit exactly once for the logical backup.
 
@@ -699,6 +700,7 @@ For `ha_native` and `app_update` backups:
 - the first complete snapshot after startup establishes the baseline;
 - historical backups in the baseline do not emit events;
 - a new logical `backup_id` seen later in a complete snapshot emits one event;
+- discovery-driven events are queued until the coordinator has committed the refreshed snapshot, avoiding publication from inside the data-fetch phase;
 - if multiple new logical backups are discovered together, events are emitted deterministically in ascending `(date, backup_id)` order;
 - a later additional copy of the same logical backup on another agent does not emit another backup-created event;
 - discovered `bma` and `unknown` backups do not use this external-discovery event path.
