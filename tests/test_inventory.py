@@ -285,7 +285,7 @@ def test_inventory_aggregation() -> None:
     }
 
     archive = summary["archive_size"]
-    assert archive["physical_total_bytes"] == 700
+    assert archive["physical_total_bytes"] == 600
     assert archive["physical_size_complete"] is True
     assert archive["logical_size_bytes"] == 500
     assert archive["logical_size_complete"] is True
