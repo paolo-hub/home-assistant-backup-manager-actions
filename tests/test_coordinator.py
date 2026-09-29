@@ -316,6 +316,29 @@ async def test_bma_event_waits_for_verified_create() -> None:
     assert len(hass.bus.events) == 1
 
 
+async def test_first_complete_snapshot_can_contain_inflight_bma() -> None:
+    """A startup baseline containing BMA must not suppress verified create."""
+    hass = Hass()
+    adapter = Adapter()
+    tracker = BackupCreatedEventTracker()
+    coordinator = BackupManagerActionsCoordinator(hass, object(), adapter, tracker)
+
+    in_flight = normalized_backup(
+        "bma-new",
+        "bma",
+        job_id="full",
+        date="2026-09-29T11:00:00+02:00",
+    )
+    adapter.responses.append((snapshot(complete=True), [in_flight]))
+    await refresh(coordinator, hass)
+
+    assert tracker.baseline_ready is True
+    assert hass.bus.events == []
+
+    coordinator.async_publish_verified_bma_create(verified_result())
+    assert [event[1]["backup_id"] for event in hass.bus.events] == ["bma-new"]
+
+
 async def test_late_agent_copy_does_not_duplicate_event() -> None:
     """Changing copies of one logical id must not create another event."""
     hass = Hass()
@@ -370,6 +393,7 @@ async def main() -> None:
     await test_incomplete_inventory_cannot_establish_baseline()
     await test_incomplete_refresh_does_not_consume_future_new_id()
     await test_bma_event_waits_for_verified_create()
+    await test_first_complete_snapshot_can_contain_inflight_bma()
     await test_late_agent_copy_does_not_duplicate_event()
     await test_backup_manager_idle_event_requests_refresh()
     print("coordinator event simulation: OK")
