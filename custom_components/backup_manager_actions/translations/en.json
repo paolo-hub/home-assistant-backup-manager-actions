@@ -142,7 +142,7 @@
         },
         "keep_last": {
           "name": "Keep last",
-          "description": "Keep the newest N unprotected backups in each retention group."
+          "description": "Keep the newest N backups in each retention group, including encrypted backups."
         },
         "daily": {
           "name": "Daily",
@@ -184,7 +184,7 @@
         },
         "keep_last": {
           "name": "Keep last",
-          "description": "Keep the newest N unprotected backups in each retention group."
+          "description": "Keep the newest N backups in each retention group, including encrypted backups."
         },
         "daily": {
           "name": "Daily",

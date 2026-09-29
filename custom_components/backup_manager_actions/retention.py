@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Iterable, Mapping
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone as dt_timezone
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -154,47 +154,9 @@ def _month_index(value: datetime) -> int:
     return value.year * 12 + (value.month - 1)
 
 
-def _previous_month_keys(now_local: datetime, count: int) -> set[tuple[int, int]]:
-    """Return current and previous calendar month keys."""
-    current = _month_index(now_local)
-    result: set[tuple[int, int]] = set()
-    for offset in range(count):
-        index = current - offset
-        year, month_zero = divmod(index, 12)
-        result.add((year, month_zero + 1))
-    return result
-
-
-def _previous_years(now_local: datetime, count: int) -> set[int]:
-    """Return current and previous calendar years."""
-    return {now_local.year - offset for offset in range(count)}
-
-
-def _previous_days(now_local: datetime, count: int) -> set[str]:
-    """Return current and previous local calendar dates as ISO strings."""
-    return {
-        (now_local.date() - timedelta(days=offset)).isoformat()
-        for offset in range(count)
-    }
-
-
-def _previous_iso_weeks(
-    now_local: datetime,
-    count: int,
-) -> set[tuple[int, int]]:
-    """Return current and previous ISO week keys."""
-    monday = now_local.date() - timedelta(days=now_local.weekday())
-    result: set[tuple[int, int]] = set()
-    for offset in range(count):
-        candidate = monday - timedelta(weeks=offset)
-        iso = candidate.isocalendar()
-        result.add((iso.year, iso.week))
-    return result
-
-
 def _backup_sort_key(item: Mapping[str, Any]) -> tuple[datetime, str]:
     """Return the precomputed deterministic backup sort key."""
-    return item["_retention_local_date"], str(item["backup_id"])
+    return item["_retention_local_date"].astimezone(dt_timezone.utc), str(item["backup_id"])
 
 
 def _group_name(
@@ -238,20 +200,15 @@ def _matches_policy_source(
 def _scope_backup(
     backup: Mapping[str, Any],
     scope_agent_ids: set[str],
-) -> tuple[list[str], bool]:
-    """Return target copies and whether any in-scope copy is protected."""
+) -> list[str]:
+    """Return target copies; native protected flags describe encryption only."""
     agents = backup.get("agents")
     if not isinstance(agents, Mapping):
         raise RetentionPolicyError(
             f"Backup {backup.get('backup_id')} has invalid agent data"
         )
 
-    target_agent_ids = sorted(scope_agent_ids.intersection(agents))
-    protected = any(
-        bool(agents[agent_id].get("protected", False))
-        for agent_id in target_agent_ids
-    )
-    return target_agent_ids, protected
+    return sorted(scope_agent_ids.intersection(agents))
 
 
 def _reclaimable_size(
@@ -283,28 +240,17 @@ def _plan_group(
     yearly: int,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
     """Plan one independent retention group."""
-    protected: list[dict[str, Any]] = []
-    eligible: list[dict[str, Any]] = []
-
-    for backup in backups:
-        if backup["_retention_protected"]:
-            protected.append(backup)
-        else:
-            eligible.append(backup)
-
-    protected.sort(key=_backup_sort_key, reverse=True)
-    eligible.sort(key=_backup_sort_key, reverse=True)
+    # Home Assistant's protected flag means encryption, not retention immunity.
+    eligible = sorted(backups, key=_backup_sort_key, reverse=True)
 
     reasons: dict[str, set[str]] = defaultdict(set)
-    by_id = {str(item["backup_id"]): item for item in eligible}
 
     for backup in eligible[:keep_last]:
         reasons[str(backup["backup_id"])].add("keep_last")
 
-    selected_days = _previous_days(now_local, daily)
-    selected_weeks = _previous_iso_weeks(now_local, weekly)
-    selected_months = _previous_month_keys(now_local, monthly)
-    selected_years = _previous_years(now_local, yearly)
+    # Compare calendar ages only for periods actually represented in inventory.
+    # Work and memory stay bounded even for very large valid counters.
+    current_monday = now_local.date() - timedelta(days=now_local.weekday())
 
     seen_days: set[str] = set()
     seen_weeks: set[tuple[int, int]] = set()
@@ -317,14 +263,16 @@ def _plan_group(
 
         if daily:
             day_key = local_date.date().isoformat()
-            if day_key in selected_days and day_key not in seen_days:
+            if 0 <= (now_local.date() - local_date.date()).days < daily and day_key not in seen_days:
                 reasons[backup_id].add(f"daily:{day_key}")
                 seen_days.add(day_key)
 
         if weekly:
             iso = local_date.isocalendar()
             week_key = (iso.year, iso.week)
-            if week_key in selected_weeks and week_key not in seen_weeks:
+            backup_monday = local_date.date() - timedelta(days=local_date.weekday())
+            week_age = (current_monday - backup_monday).days // 7
+            if 0 <= week_age < weekly and week_key not in seen_weeks:
                 reasons[backup_id].add(
                     f"weekly:{iso.year}-W{iso.week:02d}"
                 )
@@ -332,7 +280,7 @@ def _plan_group(
 
         if monthly:
             month_key = (local_date.year, local_date.month)
-            if month_key in selected_months and month_key not in seen_months:
+            if 0 <= _month_index(now_local) - _month_index(local_date) < monthly and month_key not in seen_months:
                 reasons[backup_id].add(
                     f"monthly:{local_date.year}-{local_date.month:02d}"
                 )
@@ -340,7 +288,7 @@ def _plan_group(
 
         if yearly:
             year_key = local_date.year
-            if year_key in selected_years and year_key not in seen_years:
+            if 0 <= now_local.year - year_key < yearly and year_key not in seen_years:
                 reasons[backup_id].add(f"yearly:{year_key}")
                 seen_years.add(year_key)
 
@@ -376,32 +324,8 @@ def _plan_group(
             }
         )
 
-    protected_result = [
-        {
-            "backup_id": str(backup["backup_id"]),
-            "group": group,
-            "reasons": ["protected"],
-            "protected_agent_ids": [
-                agent_id
-                for agent_id in backup["_retention_target_agent_ids"]
-                if bool(backup["agents"][agent_id].get("protected", False))
-            ],
-        }
-        for backup in protected
-    ]
-
-    # Apply executes deletion oldest first.
-    delete.sort(
-        key=lambda item: (
-            by_id.get(item["backup_id"], {}).get(
-                "_retention_local_date",
-                datetime.max.replace(tzinfo=now_local.tzinfo),
-            ),
-            item["backup_id"],
-        )
-    )
-
-    return keep, protected_result, delete
+    # Preserve the development response shape; no retention-hold API exists.
+    return keep, [], delete
 
 
 def plan_retention(
@@ -468,7 +392,7 @@ def plan_retention(
                 "A retention candidate has no valid backup_id"
             )
 
-        target_agent_ids, protected = _scope_backup(backup, scope_set)
+        target_agent_ids = _scope_backup(backup, scope_set)
         if not target_agent_ids:
             out_of_scope += 1
             skipped.append(
@@ -484,7 +408,6 @@ def plan_retention(
             timezone,
         )
         backup["_retention_target_agent_ids"] = target_agent_ids
-        backup["_retention_protected"] = protected
         group = _group_name(
             backup,
             source_type=source_type,
@@ -517,14 +440,14 @@ def plan_retention(
         key=lambda item: (item["group"], item["backup_id"])
     )
 
-    local_date_by_id = {
-        str(backup["backup_id"]): backup["_retention_local_date"]
+    utc_date_by_id = {
+        str(backup["backup_id"]): backup["_retention_local_date"].astimezone(dt_timezone.utc)
         for group_backups in grouped.values()
         for backup in group_backups
     }
     delete_result.sort(
         key=lambda item: (
-            local_date_by_id[item["backup_id"]],
+            utc_date_by_id[item["backup_id"]],
             item["backup_id"],
         )
     )

@@ -314,8 +314,8 @@ def test_union_and_deduplicated_reasons() -> None:
     assert ids(result["delete"]) == ["old"]
 
 
-def test_protected_backup_is_additional_to_quota() -> None:
-    """Protected backups never consume keep_last or GFS quota."""
+def test_encrypted_backup_consumes_normal_quota() -> None:
+    """Encrypted backups participate in keep_last and GFS normally."""
     result = plan(
         [
             backup(
@@ -334,14 +334,14 @@ def test_protected_backup_is_additional_to_quota() -> None:
         keep_last=1,
     )
 
-    assert ids(result["protected"]) == ["new-protected"]
-    assert ids(result["keep"]) == ["new-unprotected"]
-    assert ids(result["delete"]) == ["old"]
-    assert result["summary"]["protected"] == 1
+    assert ids(result["protected"]) == []
+    assert ids(result["keep"]) == ["new-protected"]
+    assert ids(result["delete"]) == ["old", "new-unprotected"]
+    assert result["summary"]["protected"] == 0
 
 
 def test_agent_scope_and_reclaimable_size() -> None:
-    """Only in-scope copies affect protection and reclaimable bytes."""
+    """Only in-scope copies affect eligibility and reclaimable bytes."""
     result = plan(
         [
             backup(
@@ -384,8 +384,8 @@ def test_agent_scope_and_reclaimable_size() -> None:
     ]
 
 
-def test_any_protected_copy_inside_scope_protects_logical_backup() -> None:
-    """One protected in-scope copy protects the logical backup on all scoped agents."""
+def test_encrypted_copy_inside_scope_is_retention_eligible() -> None:
+    """An encrypted in-scope copy does not exempt a logical backup from GFS."""
     result = plan(
         [
             backup(
@@ -417,10 +417,9 @@ def test_any_protected_copy_inside_scope_protects_logical_backup() -> None:
         keep_last=1,
     )
 
-    assert ids(result["protected"]) == ["protected"]
-    assert result["protected"][0]["protected_agent_ids"] == ["cloud"]
+    assert ids(result["protected"]) == []
     assert ids(result["keep"]) == ["keep-quota"]
-    assert ids(result["delete"]) == ["delete"]
+    assert ids(result["delete"]) == ["delete", "protected"]
 
 
 def test_missing_copy_size_marks_reclaimable_incomplete() -> None:
@@ -624,7 +623,35 @@ def test_invalid_target_date_fails_closed() -> None:
         raise AssertionError("Invalid backup date should fail")
 
 
+def test_fall_back_hour_orders_by_instant() -> None:
+    """The repeated local hour must not invert keep-last or GFS selection."""
+    items = [
+        backup("older", "2026-10-25T02:50:00+02:00"),
+        backup("newer", "2026-10-25T02:10:00+01:00"),
+    ]
+    now = datetime(2026, 10, 25, 12, tzinfo=timezone.utc)
+    for policy in ({"keep_last": 1}, {"keep_last": 0, "daily": 1},
+                   {"keep_last": 0, "weekly": 1},
+                   {"keep_last": 0, "monthly": 1},
+                   {"keep_last": 0, "yearly": 1}):
+        result = plan(items, now=now, **policy)
+        assert ids(result["keep"]) == ["newer"], policy
+    result = plan(items + [backup("latest", "2026-10-25T04:00:00+01:00")], now=now)
+    assert ids(result["delete"]) == ["older", "newer"]
+
+
+def test_large_calendar_windows_do_not_overflow() -> None:
+    """Valid large counters must not allocate a bucket per requested period."""
+    result = plan([backup("old", "2000-01-01T00:00:00Z")],
+                  keep_last=0, daily=10**12, weekly=10**12,
+                  monthly=10**12, yearly=10**12)
+    assert ids(result["keep"]) == ["old"]
+    assert len(result["keep"][0]["reasons"]) == 4
+
+
 def main() -> None:
+    test_fall_back_hour_orders_by_instant()
+    test_large_calendar_windows_do_not_overflow()
     test_public_counter_normalization()
     test_policy_validation()
     test_keep_last_and_equal_date_tie_break()
@@ -633,9 +660,9 @@ def main() -> None:
     test_monthly_bucket_across_year_boundary()
     test_monthly_and_yearly_calendar_buckets()
     test_union_and_deduplicated_reasons()
-    test_protected_backup_is_additional_to_quota()
+    test_encrypted_backup_consumes_normal_quota()
     test_agent_scope_and_reclaimable_size()
-    test_any_protected_copy_inside_scope_protects_logical_backup()
+    test_encrypted_copy_inside_scope_is_retention_eligible()
     test_missing_copy_size_marks_reclaimable_incomplete()
     test_bma_job_filter_and_legacy_exclusion()
     test_ha_native_mixes_manual_and_automatic()

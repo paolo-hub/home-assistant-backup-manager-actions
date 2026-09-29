@@ -142,7 +142,7 @@
         },
         "keep_last": {
           "name": "Mantieni ultimi",
-          "description": "Mantiene gli N backup non protetti più recenti in ciascun gruppo di retention."
+          "description": "Mantiene gli N backup più recenti in ciascun gruppo di retention, inclusi quelli cifrati."
         },
         "daily": {
           "name": "Giornalieri",
@@ -184,7 +184,7 @@
         },
         "keep_last": {
           "name": "Mantieni ultimi",
-          "description": "Mantiene gli N backup non protetti più recenti in ciascun gruppo di retention."
+          "description": "Mantiene gli N backup più recenti in ciascun gruppo di retention, inclusi quelli cifrati."
         },
         "daily": {
           "name": "Giornalieri",

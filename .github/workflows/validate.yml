@@ -39,6 +39,8 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.13"
+      - name: Install service schema test dependency
+        run: python -m pip install voluptuous==0.16.0
       - name: Compile integration
         run: python -m compileall -q custom_components tests
       - name: Run inventory simulation
@@ -55,3 +57,5 @@ jobs:
         run: python tests/test_retention.py
       - name: Run adapter simulation
         run: python tests/test_adapter.py
+      - name: Run service handler and schema simulation
+        run: python tests/test_services.py

@@ -63,7 +63,9 @@ class BackupManagerActionsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         pending = self._pending_event_data
         self._pending_event_data = []
-        self.hass.async_create_task(self._async_fire_pending_events(pending))
+        self.hass.async_create_task(
+            self._async_fire_pending_events(pending), eager_start=False
+        )
 
     async def _async_fire_pending_events(
         self,

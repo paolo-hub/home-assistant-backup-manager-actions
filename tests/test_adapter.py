@@ -1140,7 +1140,7 @@ async def test_apply_retention_preserves_out_of_scope_copies() -> None:
     assert deleted["remaining_agent_ids"] == ["cloud"]
 
 
-async def test_apply_retention_rechecks_protection_before_delete() -> None:
+async def test_apply_retention_allows_late_encryption_flag() -> None:
     manager = Manager()
     add_bma_backup(
         manager,
@@ -1155,33 +1155,9 @@ async def test_apply_retention_rechecks_protection_before_delete() -> None:
     manager.protect_on_lookup_backup_ids = {"expire"}
     adapter = BackupManagerActionsAdapter(Hass(manager))
 
-    try:
-        await adapter.async_apply_retention(
-            source_type="bma",
-            job_id="full",
-            group_by=None,
-            agent_ids=["local"],
-            keep_last=1,
-            daily=0,
-            weekly=0,
-            monthly=0,
-            yearly=0,
-            now=adapter_module.datetime(
-                2026,
-                9,
-                29,
-                12,
-                0,
-                tzinfo=adapter_module.timezone.utc,
-            ),
-        )
-    except BackupManagerActionsError as err:
-        assert "became protected on: local" in str(err)
-    else:
-        raise AssertionError("Late protection must block deletion")
-
-    assert "expire" in manager.backups
-    assert manager.backups["expire"].agents["local"].protected is True
+    result = await adapter.async_apply_retention(**review_policy(["local"]))
+    assert result["execution"]["deleted_count"] == 1
+    assert "expire" not in manager.backups
 
 
 async def test_apply_retention_deletes_late_in_scope_copy() -> None:
@@ -1835,7 +1811,159 @@ async def test_apply_retention_is_serialized() -> None:
     assert set(manager.backups) == {"keep"}
 
 
+def review_policy(agent_ids=None):
+    """Return a small deterministic retention policy for review regressions."""
+    return dict(source_type="bma", job_id="full", group_by=None,
+                agent_ids=agent_ids, keep_last=1, daily=0, weekly=0,
+                monthly=0, yearly=0)
+
+
+def review_inventory():
+    """Create a retained backup and an older candidate."""
+    manager = Manager()
+    add_bma_backup(manager, "keep", "2026-09-29T10:00:00+02:00")
+    add_bma_backup(manager, "expire", "2026-09-28T10:00:00+02:00")
+    return manager, BackupManagerActionsAdapter(Hass(manager))
+
+
+async def test_retention_final_read_rechecks_metadata() -> None:
+    """The delete pre-read must enforce retention guards as well."""
+    for change in ("job", "date"):
+        manager, adapter = review_inventory()
+        original = manager.async_get_backup
+        reads = 0
+
+        async def changing_lookup(backup_id):
+            nonlocal reads
+            reads += 1
+            if reads == 2:
+                item = manager.backups[backup_id]
+                if change == "job":
+                    item.extra_metadata["backup_manager_actions.job_id"] = "partial"
+                else:
+                    item.date = "2026-09-30T10:00:00+02:00"
+            return await original(backup_id)
+
+        manager.async_get_backup = changing_lookup
+        try:
+            await adapter.async_apply_retention(**review_policy(["local"]))
+        except BackupManagerActionsError:
+            pass
+        else:
+            raise AssertionError(f"Final-read {change} change was ignored")
+        assert "expire" in manager.backups
+
+
+async def test_retention_agent_removed_during_listing_fails_closed() -> None:
+    """An agent disappearing during an awaited listing cannot yield a safe plan."""
+    manager, adapter = review_inventory()
+    original = manager.async_get_backups
+
+    async def changing_inventory():
+        result = await original()
+        manager.backup_agents.pop("cloud", None)
+        return result
+
+    manager.async_get_backups = changing_inventory
+    try:
+        await adapter.async_plan_retention(**review_policy(["local", "cloud"]))
+    except BackupManagerActionsError as err:
+        assert "cloud" in str(err)
+    else:
+        raise AssertionError("A vanished scoped agent was treated as readable")
+
+
+async def test_retention_omitted_scope_is_frozen_during_apply() -> None:
+    """A newly registered provider must not become a destructive target mid-apply."""
+    manager, adapter = review_inventory()
+    original = manager.async_get_backups
+    reads = 0
+
+    async def changing_inventory():
+        nonlocal reads
+        reads += 1
+        if reads == 1:
+            manager.backup_agents["new_provider"] = Agent("New", "test")
+            manager.backups["expire"].agents["new_provider"] = Status(False, 150)
+        return await original()
+
+    manager.async_get_backups = changing_inventory
+    result = await adapter.async_apply_retention(**review_policy())
+    assert result["plan"]["scope"]["agent_ids"] == ["cloud", "local", "third"]
+    assert set(manager.backups["expire"].agents) == {"new_provider"}
+
+
+async def test_delete_cannot_verify_an_unregistered_target() -> None:
+    """A provider disappearing after delete must not be reported as absent."""
+    manager, adapter = review_inventory()
+    original = manager.async_delete_backup
+
+    async def disappearing_delete(backup_id, *, agent_ids=None):
+        result = await original(backup_id, agent_ids=agent_ids)
+        manager.backup_agents.pop("local")
+        return result
+
+    manager.async_delete_backup = disappearing_delete
+    try:
+        await adapter.async_delete(backup_id="expire", agent_ids=["local"])
+    except BackupManagerActionsError as err:
+        assert "local" in str(err)
+    else:
+        raise AssertionError("An unregistered provider was reported as verified")
+
+
+async def test_create_rejects_partial_content_failure() -> None:
+    """Stored copies alone do not prove that the requested contents succeeded."""
+    for field, value in (("failed_addons", [Addon("core_mosquitto")]),
+                         ("failed_folders", [Folder.SHARE])):
+        manager = Manager()
+        adapter = BackupManagerActionsAdapter(Hass(manager))
+        original = manager.async_create_backup
+
+        async def partial_create(**kwargs):
+            result = await original(**kwargs)
+            setattr(manager.backups["abc12345"], field, value)
+            return result
+
+        manager.async_create_backup = partial_create
+        try:
+            await create_default_backup(adapter)
+        except BackupManagerActionsError as err:
+            assert "content" in str(err)
+        else:
+            raise AssertionError(f"Create succeeded with {field}")
+
+
+async def test_apply_preserves_progress_on_native_manager_error() -> None:
+    """A native HA exception after one delete must still report prior progress."""
+    manager, adapter = review_inventory()
+    add_bma_backup(manager, "oldest", "2026-09-27T10:00:00+02:00")
+    original = manager.async_get_backups
+
+    async def fail_after_first_delete():
+        if "oldest" not in manager.backups:
+            raise HomeAssistantError("native inventory failure")
+        return await original()
+
+    manager.async_get_backups = fail_after_first_delete
+    try:
+        await adapter.async_apply_retention(**review_policy(["local"]))
+    except BackupManagerActionsError as err:
+        assert "expire" in str(err)
+        assert "deleted before failure: oldest" in str(err)
+    else:
+        raise AssertionError("Native manager failure was not reported")
+    assert "expire" in manager.backups
+
+
 async def main() -> None:
+    await test_apply_preserves_progress_on_native_manager_error()
+    await test_retention_final_read_rechecks_metadata()
+    await test_retention_agent_removed_during_listing_fails_closed()
+    await test_retention_omitted_scope_is_frozen_during_apply()
+    await test_delete_cannot_verify_an_unregistered_target()
+    await test_create_rejects_partial_content_failure()
+
     await test_scenario_full_job_retention_isolated_from_other_sources()
     await test_scenario_ha_native_manual_and_automatic_share_one_policy()
     await test_scenario_app_update_per_app_is_independent_end_to_end()
@@ -1843,7 +1971,7 @@ async def main() -> None:
     await test_plan_and_apply_agree_when_inventory_is_unchanged()
     await test_apply_retention_recalculates_current_state()
     await test_apply_retention_preserves_out_of_scope_copies()
-    await test_apply_retention_rechecks_protection_before_delete()
+    await test_apply_retention_allows_late_encryption_flag()
     await test_apply_retention_handles_candidate_removed_by_other_actor()
     await test_apply_retention_aborts_on_late_classification_change()
     await test_apply_retention_aborts_on_late_scoped_agent_error()

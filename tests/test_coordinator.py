@@ -74,10 +74,13 @@ class DataUpdateCoordinator:
     def __init__(self, hass, _logger, **_kwargs):
         self.hass = hass
         self.data = None
+        self.listeners_updated = False
 
     async def async_request_refresh(self):
+        self.listeners_updated = False
         self.data = await self._async_update_data()
         self._async_refresh_finished()
+        self.listeners_updated = True
         return self.data
 
 
@@ -124,8 +127,9 @@ class Hass:
         self.bus = Bus()
         self.tasks = []
 
-    def async_create_task(self, coro):
-        task = asyncio.create_task(coro)
+    def async_create_task(self, coro, *, eager_start=True):
+        # Match HA's default eager task execution, not asyncio.create_task.
+        task = asyncio.Task(coro, loop=asyncio.get_running_loop(), eager_start=eager_start)
         self.tasks.append(task)
         return task
 
@@ -389,7 +393,28 @@ async def test_backup_manager_idle_event_requests_refresh() -> None:
     assert tracker.baseline_ready is True
 
 
+async def test_external_event_follows_sensor_listeners() -> None:
+    """Even under eager HA scheduling the event follows entity updates."""
+    hass = Hass()
+    adapter = Adapter()
+    coordinator = BackupManagerActionsCoordinator(hass, object(), adapter, BackupCreatedEventTracker())
+    adapter.responses.append((snapshot(complete=True), []))
+    await refresh(coordinator, hass)
+    original = hass.bus.async_fire
+
+    def assert_order(event_type, event_data):
+        assert coordinator.listeners_updated, "Event fired before sensor listeners"
+        original(event_type, event_data)
+
+    hass.bus.async_fire = assert_order
+    adapter.responses.append((snapshot(complete=True), [normalized_backup(
+        "new", "ha_native", date="2026-09-29T10:00:00Z")]))
+    await refresh(coordinator, hass)
+    assert len(hass.bus.events) == 1
+
+
 async def main() -> None:
+    await test_external_event_follows_sensor_listeners()
     await test_incomplete_inventory_cannot_establish_baseline()
     await test_incomplete_refresh_does_not_consume_future_new_id()
     await test_bma_event_waits_for_verified_create()

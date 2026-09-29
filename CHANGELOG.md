@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.1.0 — Unreleased
+
+- Add normalized source/job inventory, create metadata, new-backup events, and diagnostic sensors.
+- Add calendar GFS planning and verified execution with explicit agent scope.
+- Correct native `protected` semantics: encryption does not exclude backups from retention (approved 2026-09-29).
+- Fix repeated-hour chronology, eager event scheduling, and service refresh ordering.
+- Revalidate classification/date and registered agents at the final destructive boundary; freeze apply scope.
+- Reject reported partial backup contents; refresh diagnostics after failed mutations.
+- Bound calendar planning by inventory size and enforce string job IDs.
+- Extend behavioral simulations to include service handlers and schemas. Real 1.1 E2E validation is pending.
+
 ## 1.0.1
 
 ### Fixed

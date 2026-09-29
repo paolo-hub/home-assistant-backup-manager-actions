@@ -224,6 +224,21 @@ class BackupManagerActionsAdapter:
                 + ")"
             )
 
+        if backup.failed_addons or backup.failed_folders:
+            details: list[str] = []
+            if backup.failed_addons:
+                details.append(
+                    "failed addons: " + ", ".join(addon.slug for addon in backup.failed_addons)
+                )
+            if backup.failed_folders:
+                details.append(
+                    "failed folders: " + ", ".join(folder.value for folder in backup.failed_folders)
+                )
+            raise BackupManagerActionsError(
+                f"Backup {backup.backup_id} has incomplete content ("
+                + " | ".join(details) + ")"
+            )
+
         normalized_backup = normalize_backup(backup)
         metadata_errors: list[str] = []
         if normalized_backup["source_type"] != SOURCE_BMA:
@@ -316,7 +331,9 @@ class BackupManagerActionsAdapter:
         scope_agent_ids: list[str],
     ) -> list[dict[str, Any]]:
         """Return normalized inventory after fail-closed scoped error checks."""
+        self.validate_agent_ids(scope_agent_ids)
         backups, agent_errors = await self.manager.async_get_backups()
+        self.validate_agent_ids(scope_agent_ids)
         relevant_errors = {
             agent_id: error
             for agent_id, error in agent_errors.items()
@@ -395,6 +412,34 @@ class BackupManagerActionsAdapter:
 
         return True
 
+    def _validate_retention_backup(
+        self,
+        backup: ManagerBackup,
+        scope: dict[str, Any],
+        candidate: dict[str, Any],
+    ) -> list[str]:
+        """Validate the latest object immediately before a destructive call."""
+        scope_agent_ids = list(scope["agent_ids"])
+        normalized = normalize_backup(backup)
+        if not self._retention_candidate_matches_scope(
+            normalized,
+            scope,
+            candidate,
+        ):
+            raise BackupManagerActionsError(
+                "Retention candidate "
+                f"{candidate['backup_id']} changed classification before deletion"
+            )
+
+        current_target_agent_ids = sorted(
+            set(scope_agent_ids).intersection(normalized["agents"])
+        )
+        if normalized["date"] != candidate["date"]:
+            raise BackupManagerActionsError(
+                f"Retention candidate {candidate['backup_id']} changed date before deletion"
+            )
+        return current_target_agent_ids
+
     async def _async_current_retention_targets(
         self,
         *,
@@ -408,6 +453,7 @@ class BackupManagerActionsAdapter:
         backup, lookup_errors = await self.manager.async_get_backup(
             candidate["backup_id"]
         )
+        self.validate_agent_ids(scope_agent_ids)
         relevant_errors = {
             agent_id: error
             for agent_id, error in lookup_errors.items()
@@ -436,31 +482,10 @@ class BackupManagerActionsAdapter:
                 },
             )
 
-        normalized = normalize_backup(backup)
-        if not self._retention_candidate_matches_scope(
-            normalized,
-            scope,
-            candidate,
-        ):
-            raise BackupManagerActionsError(
-                "Retention candidate "
-                f"{candidate['backup_id']} changed classification before deletion"
-            )
-
-        current_target_agent_ids = sorted(
-            set(scope_agent_ids).intersection(normalized["agents"])
+        current_target_agent_ids = self._validate_retention_backup(
+            backup, scope, candidate
         )
-        protected_agent_ids = [
-            agent_id
-            for agent_id in current_target_agent_ids
-            if normalized["agents"][agent_id]["protected"]
-        ]
-        if protected_agent_ids:
-            raise BackupManagerActionsError(
-                "Retention candidate "
-                f"{candidate['backup_id']} became protected on: "
-                + ", ".join(protected_agent_ids)
-            )
+        normalized = normalize_backup(backup)
 
         if not current_target_agent_ids:
             remaining_agent_ids = sorted(normalized["agents"])
@@ -543,6 +568,9 @@ class BackupManagerActionsAdapter:
             now=evaluated_at,
         )
 
+        # Freeze the resolved provider scope for the whole invocation. A new
+        # registration must not expand destructive authorization mid-operation.
+        agent_ids = list(plan["scope"]["agent_ids"])
         deleted: list[dict[str, Any]] = []
         for candidate in plan["delete"]:
             try:
@@ -598,16 +626,20 @@ class BackupManagerActionsAdapter:
                     deleted.append(already_absent_result)
                     continue
 
+                if current_candidate["group"] != candidate["group"]:
+                    raise BackupManagerActionsError("candidate changed retention group")
                 result = await self.async_delete(
                     backup_id=candidate["backup_id"],
                     agent_ids=target_agent_ids,
+                    _retention_scope=current_plan["scope"],
+                    _retention_candidate=current_candidate,
                 )
                 result["target_copies_found_before_delete"] = bool(
                     set(result["target_agent_ids"]).intersection(
                         result["previous_agent_ids"]
                     )
                 )
-            except BackupManagerActionsError as err:
+            except HomeAssistantError as err:
                 deleted_ids = [
                     item["backup_id"]
                     for item in deleted
@@ -647,6 +679,8 @@ class BackupManagerActionsAdapter:
         *,
         backup_id: str,
         agent_ids: list[str] | None = None,
+        _retention_scope: dict[str, Any] | None = None,
+        _retention_candidate: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Delete a backup globally or from selected agents, then verify it."""
         manager = self.manager
@@ -658,10 +692,16 @@ class BackupManagerActionsAdapter:
             target_agent_ids = set(manager.backup_agents)
 
         backup, lookup_errors = await manager.async_get_backup(backup_id)
+        self.validate_agent_ids(list(target_agent_ids))
+        if _retention_scope is not None:
+            self.validate_agent_ids(_retention_scope["agent_ids"])
+        inspection_agent_ids = (
+            set(_retention_scope["agent_ids"]) if _retention_scope else target_agent_ids
+        )
         relevant_lookup_errors = {
             agent_id: error
             for agent_id, error in lookup_errors.items()
-            if agent_ids is None or agent_id in target_agent_ids
+            if agent_ids is None or agent_id in inspection_agent_ids
         }
         if relevant_lookup_errors:
             errors = "; ".join(
@@ -680,12 +720,31 @@ class BackupManagerActionsAdapter:
                 "remaining_agent_ids": [],
             }
 
+        if _retention_scope is not None:
+            assert _retention_candidate is not None
+            agent_ids = self._validate_retention_backup(
+                backup, _retention_scope, _retention_candidate
+            )
+            target_agent_ids = set(agent_ids)
         existing_agent_ids = sorted(backup.agents)
+        if not target_agent_ids.intersection(existing_agent_ids):
+            return {
+                "backup_id": backup_id,
+                "found_before_delete": True,
+                "target_agent_ids": sorted(target_agent_ids),
+                "previous_agent_ids": existing_agent_ids,
+                "remaining_agent_ids": existing_agent_ids,
+            }
 
-        delete_errors = await manager.async_delete_backup(
-            backup_id,
-            agent_ids=agent_ids,
-        )
+        try:
+            delete_errors = await manager.async_delete_backup(
+                backup_id,
+                agent_ids=sorted(target_agent_ids),
+            )
+        except HomeAssistantError as err:
+            raise BackupManagerActionsError(
+                f"Backup {backup_id} deletion failed: {err}"
+            ) from err
         if delete_errors:
             errors = "; ".join(
                 f"{agent_id}: {error}"
@@ -695,7 +754,9 @@ class BackupManagerActionsAdapter:
                 f"Backup {backup_id} was not deleted cleanly: {errors}"
             )
 
+        self.validate_agent_ids(list(target_agent_ids))
         remaining, verify_errors = await manager.async_get_backup(backup_id)
+        self.validate_agent_ids(list(inspection_agent_ids))
         relevant_verify_errors = {
             agent_id: error
             for agent_id, error in verify_errors.items()

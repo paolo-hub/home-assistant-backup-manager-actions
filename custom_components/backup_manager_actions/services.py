@@ -122,7 +122,7 @@ CREATE_SCHEMA = vol.Schema(
             cv.ensure_list,
             [vol.In([folder.value for folder in Folder])],
         ),
-        vol.Optional(CONF_JOB_ID): vol.All(cv.string, _job_id),
+        vol.Optional(CONF_JOB_ID): _job_id,
         vol.Optional(CONF_NAME): cv.string,
         vol.Optional(CONF_PASSWORD): cv.string,
     }
@@ -155,7 +155,7 @@ RETENTION_SCHEMA = vol.Schema(
         vol.Required(CONF_SOURCE_TYPE): vol.In(
             [SOURCE_BMA, SOURCE_HA_NATIVE, SOURCE_APP_UPDATE]
         ),
-        vol.Optional(CONF_JOB_ID): vol.All(cv.string, _job_id),
+        vol.Optional(CONF_JOB_ID): _job_id,
         vol.Optional(CONF_GROUP_BY): vol.In(
             [APP_GROUP_BY_APP, APP_GROUP_BY_ALL]
         ),
@@ -170,14 +170,14 @@ RETENTION_SCHEMA = vol.Schema(
 
 
 async def _async_refresh_coordinators(hass: HomeAssistant) -> None:
-    """Refresh every loaded sensor coordinator."""
+    """Wait for fresh diagnostics, bypassing the debounced request queue."""
     coordinators: set[BackupManagerActionsCoordinator] = hass.data[DOMAIN].get(
         DATA_COORDINATORS,
         set(),
     )
     if coordinators:
         await asyncio.gather(
-            *(coordinator.async_request_refresh() for coordinator in coordinators),
+            *(coordinator.async_refresh() for coordinator in tuple(coordinators)),
             return_exceptions=True,
         )
 
@@ -191,18 +191,20 @@ def async_setup_services(
     """Register admin-only actions at integration setup time."""
 
     async def _handle_create(call: ServiceCall) -> ServiceResponse | None:
-        result = await adapter.async_create(
-            agent_ids=call.data[CONF_AGENT_IDS],
-            include_homeassistant=call.data[CONF_INCLUDE_HOMEASSISTANT],
-            include_database=call.data[CONF_INCLUDE_DATABASE],
-            include_all_addons=call.data[CONF_INCLUDE_ALL_ADDONS],
-            include_addons=call.data.get(CONF_INCLUDE_ADDONS) or None,
-            include_folders=call.data.get(CONF_INCLUDE_FOLDERS),
-            job_id=call.data.get(CONF_JOB_ID),
-            name=(call.data.get(CONF_NAME) or "").strip() or None,
-            password=call.data.get(CONF_PASSWORD) or None,
-        )
-        await _async_refresh_coordinators(hass)
+        try:
+            result = await adapter.async_create(
+                agent_ids=call.data[CONF_AGENT_IDS],
+                include_homeassistant=call.data[CONF_INCLUDE_HOMEASSISTANT],
+                include_database=call.data[CONF_INCLUDE_DATABASE],
+                include_all_addons=call.data[CONF_INCLUDE_ALL_ADDONS],
+                include_addons=call.data.get(CONF_INCLUDE_ADDONS) or None,
+                include_folders=call.data.get(CONF_INCLUDE_FOLDERS),
+                job_id=call.data.get(CONF_JOB_ID),
+                name=(call.data.get(CONF_NAME) or "").strip() or None,
+                password=call.data.get(CONF_PASSWORD) or None,
+            )
+        finally:
+            await _async_refresh_coordinators(hass)
 
         coordinators: set[BackupManagerActionsCoordinator] = hass.data[DOMAIN].get(
             DATA_COORDINATORS,
@@ -219,11 +221,13 @@ def async_setup_services(
         return result if call.return_response else None
 
     async def _handle_delete(call: ServiceCall) -> ServiceResponse | None:
-        result = await adapter.async_delete(
-            backup_id=call.data[CONF_BACKUP_ID],
-            agent_ids=call.data.get(CONF_AGENT_IDS),
-        )
-        await _async_refresh_coordinators(hass)
+        try:
+            result = await adapter.async_delete(
+                backup_id=call.data[CONF_BACKUP_ID],
+                agent_ids=call.data.get(CONF_AGENT_IDS),
+            )
+        finally:
+            await _async_refresh_coordinators(hass)
         return result if call.return_response else None
 
     async def _handle_refresh(call: ServiceCall) -> ServiceResponse | None:
@@ -262,18 +266,20 @@ def async_setup_services(
         )
 
     async def _handle_apply_retention(call: ServiceCall) -> ServiceResponse:
-        result = await adapter.async_apply_retention(
-            source_type=call.data[CONF_SOURCE_TYPE],
-            job_id=call.data.get(CONF_JOB_ID),
-            group_by=call.data.get(CONF_GROUP_BY),
-            agent_ids=call.data.get(CONF_AGENT_IDS),
-            keep_last=call.data[CONF_KEEP_LAST],
-            daily=call.data[CONF_DAILY],
-            weekly=call.data[CONF_WEEKLY],
-            monthly=call.data[CONF_MONTHLY],
-            yearly=call.data[CONF_YEARLY],
-        )
-        await _async_refresh_coordinators(hass)
+        try:
+            result = await adapter.async_apply_retention(
+                source_type=call.data[CONF_SOURCE_TYPE],
+                job_id=call.data.get(CONF_JOB_ID),
+                group_by=call.data.get(CONF_GROUP_BY),
+                agent_ids=call.data.get(CONF_AGENT_IDS),
+                keep_last=call.data[CONF_KEEP_LAST],
+                daily=call.data[CONF_DAILY],
+                weekly=call.data[CONF_WEEKLY],
+                monthly=call.data[CONF_MONTHLY],
+                yearly=call.data[CONF_YEARLY],
+            )
+        finally:
+            await _async_refresh_coordinators(hass)
         return result
 
     async_register_admin_service(

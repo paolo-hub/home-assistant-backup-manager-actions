@@ -1,6 +1,6 @@
 # Backup Manager Actions 1.1 Technical Specification
 
-**Status:** Frozen design contract  
+**Status:** Frozen design contract (encryption semantics corrected with Paolo on 2026-09-29)
 **Target release:** 1.1.0  
 **Branch:** `feature/bma-1.1`  
 **Scope:** API contract, classification, inventory, retention, events, and diagnostic entities  
@@ -264,6 +264,11 @@ size_by_agent:
   hassio.local: 123456789
 ```
 
+A create must raise an explicit error if Home Assistant reports failed App or
+folder contents, even when every requested agent has a copy. Such an operation
+must not emit a verified BMA success event or allow an ordinary sequential
+create-then-retention automation to continue as though creation succeeded.
+
 ### 6.4 Manual and scheduled jobs
 
 BMA itself does not distinguish manual versus scheduled execution.
@@ -424,7 +429,7 @@ All GFS buckets are calendar buckets, not moving duration windows.
 
 ### 9.1 keep_last
 
-`keep_last: N` keeps the N newest eligible unprotected logical backups in the retention group.
+`keep_last: N` keeps the N newest eligible logical backups (encrypted or unencrypted) in the retention group.
 
 ### 9.2 daily
 
@@ -481,7 +486,6 @@ The final keep set is the union of:
 - weekly buckets
 - monthly buckets
 - yearly buckets
-- protected backups
 
 The same logical backup may satisfy multiple rules and appears only once in the keep set.
 
@@ -495,19 +499,26 @@ Backups are ordered by:
 2. `backup_id` descending lexicographically when dates are equal.
 
 This ordering is used consistently for `keep_last` and bucket selection.
+Compare UTC instants, including within the repeated fall-back hour. Local time
+is used only to assign calendar buckets. Planning must scale with inventory,
+not allocate one object per requested calendar period.
 
-## 10. Protected copies
+## 10. Encryption is not retention protection
 
-Protection is evaluated only within the active agent scope.
+**Design correction approved by Paolo on 2026-09-29:** native Home Assistant
+`AgentBackupStatus.protected` means that the archive is encrypted with a password.
+It is not an immutable flag, a retention hold, or a prohibition on deletion.
 
-If any in-scope copy of a logical backup is protected:
+Encrypted and unencrypted copies participate in the same keep-last/GFS policy.
+Encryption neither exempts a logical backup from deletion nor gives it an
+additional quota. Native `protected` and `protected_by_agent` fields retain their
+original encryption meaning in inventory, create responses, and events.
 
-- the logical backup is treated as protected for that retention evaluation;
-- it is never selected for deletion;
-- it does not consume `keep_last` or GFS bucket quota;
-- it is returned separately in the plan.
+BMA 1.1 does not implement retention holds. For compatibility with the development
+plan response shape, `protected` is always `[]` and `summary.protected` is always
+`0`. These fields must not be populated from native encryption flags.
 
-Protected backups are therefore additional to the configured retention quota.
+This correction supersedes the earlier specification's encrypted-copy exclusion.
 
 ## 11. App Update grouping
 
@@ -574,8 +585,8 @@ policy:
   yearly: 3
 
 summary:
-  considered: 18
-  protected: 1
+  considered: 17
+  protected: 0
   keep: 12
   delete: 5
   out_of_scope: 0
@@ -589,11 +600,7 @@ keep:
       - keep_last
       - daily:2026-09-29
 
-protected:
-  - backup_id: def
-    group: full
-    reasons:
-      - protected
+protected: []
 
 delete:
   - backup_id: ghi
@@ -625,7 +632,7 @@ Delete candidates are returned in deterministic oldest-first order using parsed 
 
 Execution sequence:
 
-1. resolve agent scope;
+1. resolve and freeze agent scope for this invocation;
 2. validate every scoped agent;
 3. read current inventory;
 4. abort if scoped inventory has errors;
@@ -661,11 +668,17 @@ For each logical backup:
 - re-read the logical backup immediately before deletion;
 - abort if the candidate is no longer eligible under the current policy;
 - abort if its retention classification no longer matches the current plan;
-- abort if any current in-scope copy has become protected;
+- abort if the candidate date changed since policy evaluation;
+- repeat classification/date/scope checks on the final delete pre-read;
 - include a copy that appeared on another in-scope agent after planning;
 - delete only in-scope copies;
 - verify target copies are gone;
 - preserve any copies outside the scope.
+
+Agent registration is checked again after awaited inventory reads and after deletion.
+An unregistered target cannot be treated as verified absent. A provider registered
+after the initial plan is outside this invocation's frozen scope. Copies added to
+an already scoped provider remain in scope.
 
 If the target backup or all in-scope target copies were already removed by another actor, deletion remains idempotent and is reported as already absent rather than treated as a destructive failure. A logical backup may still remain on out-of-scope agents in this case.
 
@@ -709,7 +722,7 @@ backup_manager_actions_backup_created
 For backups created through `backup_manager_actions.create`:
 
 - emit the event only after create verification has succeeded on every requested destination and BMA metadata verification has succeeded;
-- when a coordinator is loaded, request its refresh before publishing the verified BMA event so diagnostic state can catch up first;
+- when a coordinator is loaded, await an immediate refresh (not just a debounced request) before publishing the verified BMA event; a refresh failure does not undo a verified backup;
 - a Backup Manager refresh may observe the logical backup before create verification finishes, but discovery alone must not emit a BMA-created event;
 - emit exactly once for the logical backup.
 
@@ -722,7 +735,7 @@ For `ha_native` and `app_update` backups:
 - the first complete snapshot after startup establishes the baseline;
 - historical backups in the baseline do not emit events;
 - a new logical `backup_id` seen later in a complete snapshot emits one event;
-- discovery-driven events are queued until the coordinator has committed the refreshed snapshot, avoiding publication from inside the data-fetch phase;
+- discovery-driven events are deferred with non-eager task scheduling until the coordinator has committed the refreshed snapshot and updated entity listeners;
 - if multiple new logical backups are discovered together, events are emitted deterministically by ascending real timestamp and then `backup_id`; ISO offsets are parsed and must not be compared lexically;
 - a later additional copy of the same logical backup on another agent does not emit another backup-created event;
 - discovered `bma` and `unknown` backups do not use this external-discovery event path.
@@ -923,6 +936,10 @@ The internal normalized snapshot and the optional response of `backup_manager_ac
 
 A snapshot with agent errors must preserve those errors explicitly, set `inventory_complete = false`, and mark aggregate size completeness false rather than silently presenting partial provider data as complete.
 
+Mutation service handlers refresh diagnostics in `finally`, including after
+partial create/delete/apply failures. The original action failure is preserved;
+refreshing diagnostics does not convert failure into success.
+
 ## 19. Error model
 
 BMA continues to use `BackupManagerActionsError` for operational failures.
@@ -977,7 +994,7 @@ At minimum, automated tests must cover:
 - no backfill;
 - union/dedup reasons;
 - equal-date tie-break;
-- protected backups excluded from quota;
+- encrypted backups count towards normal keep-last/GFS quota;
 - App grouping per App;
 - App grouping all;
 - BMA job filtering;
@@ -992,7 +1009,9 @@ At minimum, automated tests must cover:
 - scoped agent listing error;
 - backup present only on subset of scoped agents;
 - out-of-scope copies preserved;
-- protected copy in scope;
+- encrypted copy in scope remains eligible for retention;
+- provider registration changes during listing and deletion;
+- classification/date changes on the final pre-delete read;
 - target copies disappearing after planning while out-of-scope copies remain;
 - policy drift between destructive candidates;
 - delete verification failure.
@@ -1057,7 +1076,7 @@ BMA 1.1 is ready for release only when:
 - apply recalculates when state changes;
 - per-App retention never mixes App slugs;
 - scoped agent errors block deletion;
-- protected backups are never deleted and do not consume quota;
+- encrypted backups obey the same retention policy as unencrypted backups;
 - external new-backup events do not replay at startup or duplicate on additional copies;
 - archive totals expose completeness and per-agent breakdowns;
 - Local, SMB, and Google Drive end-to-end tests pass.

@@ -8,7 +8,7 @@
 
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2026.9%2B-41BDF5?style=flat-square&logo=home-assistant&logoColor=white)](https://www.home-assistant.io/)
 [![HACS](https://img.shields.io/badge/HACS-Custom-41BDF5?style=flat-square)](https://www.hacs.xyz/)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](https://github.com/paolo-hub/home-assistant-backup-manager-actions/blob/main/LICENSE)
 [![Last commit](https://img.shields.io/github/last-commit/paolo-hub/home-assistant-backup-manager-actions?style=flat-square)](https://github.com/paolo-hub/home-assistant-backup-manager-actions/commits/main)
 
 **Backup Manager Actions** is a Home Assistant custom integration that exposes the native Backup Manager to automations. It lets automations create, inspect, verify, and delete logical backups across multiple Backup Agents while leaving storage, encryption, credentials, and restore handling to Home Assistant and the selected providers.
@@ -43,6 +43,25 @@ Backup operations are intentionally fail-closed where possible:
 
 Multi-agent deletion cannot be transactional across independent providers. If one provider fails after another has already deleted its copy, the action reports failure and can be safely retried.
 
+## 1.1 development branch
+
+`feature/bma-1.1` is under pre-release validation; the stable release remains 1.0.x.
+The normative [1.1 specification](docs/API_1.1_SPEC.md) describes `job_id`,
+classification, new-backup events, archive diagnostics, and the new
+`plan_retention` / `apply_retention` actions.
+
+**Encryption semantics:** Home Assistant's `protected` field means password
+encryption. Encrypted backups participate in normal GFS retention and may be
+deleted when they expire. BMA does not currently implement retention holds.
+
+`plan_retention` is read-only. `apply_retention` recalculates the policy, fixes
+its evaluation time and resolved agent scope for the invocation, and revalidates
+before each delete. Supply explicit `agent_ids` when all expected destinations
+must be registered. The package owns policy/scheduling; BMA does not persist them.
+
+See the [independent pre-E2E review](docs/PRE_E2E_REVIEW.md) for corrected defects,
+simulation coverage, and the remaining real-provider acceptance checks.
+
 ## Actions
 
 ### `backup_manager_actions.create`
@@ -64,7 +83,7 @@ data:
 response_variable: backup_result
 ```
 
-The response includes the final logical `backup_id`, the Supervisor `backup_job_id`, requested/stored agents, and per-agent size/protection information.
+The response includes the final logical `backup_id`, the Supervisor `backup_job_id`, requested/stored agents, and per-agent size/encryption information.
 
 Backups created by this action are custom backups (`with_automatic_settings: false`). They are therefore suitable for an external/custom retention policy rather than Home Assistant's automatic-backup retention.
 
