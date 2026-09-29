@@ -252,6 +252,8 @@ date: "..."
 source_type: bma
 job_id: full
 metadata_version: 1
+failed_agent_ids: []
+with_automatic_settings: false
 requested_agent_ids:
   - hassio.local
 stored_agent_ids:
@@ -684,18 +686,22 @@ backup_manager_actions_backup_created
 
 For backups created through `backup_manager_actions.create`:
 
-- emit the event only after create verification has succeeded on every requested destination;
+- emit the event only after create verification has succeeded on every requested destination and BMA metadata verification has succeeded;
+- a Backup Manager refresh may observe the logical backup before create verification finishes, but discovery alone must not emit a BMA-created event;
 - emit exactly once for the logical backup.
 
 ### 14.2 Externally created backups
 
 For `ha_native` and `app_update` backups:
 
-- the coordinator compares successful inventory snapshots;
-- the first successful snapshot after startup establishes the baseline;
+- the coordinator compares only complete inventory snapshots (`inventory_complete = true`);
+- incomplete snapshots do not establish or advance the event baseline;
+- the first complete snapshot after startup establishes the baseline;
 - historical backups in the baseline do not emit events;
-- a new logical `backup_id` seen later emits one event;
-- a later additional copy of the same logical backup on another agent does not emit another backup-created event.
+- a new logical `backup_id` seen later in a complete snapshot emits one event;
+- if multiple new logical backups are discovered together, events are emitted deterministically in ascending `(date, backup_id)` order;
+- a later additional copy of the same logical backup on another agent does not emit another backup-created event;
+- discovered `bma` and `unknown` backups do not use this external-discovery event path.
 
 ### 14.3 Event payload
 
@@ -719,6 +725,8 @@ with_automatic_settings: false
 Fields that do not apply are `null` or empty lists/maps as appropriate.
 
 No `backup_updated` event is introduced in 1.1.
+
+Event deduplication is by logical `backup_id` for the lifetime of the loaded integration. Deleted and later re-observed logical IDs do not generate a second event during the same runtime.
 
 ## 15. Diagnostic entities
 
