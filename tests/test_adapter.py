@@ -207,6 +207,8 @@ async def test_create_success() -> None:
     assert result["source_type"] == "bma"
     assert result["job_id"] is None
     assert result["metadata_version"] == 1
+    assert result["failed_agent_ids"] == []
+    assert result["with_automatic_settings"] is False
     assert result["size_by_agent"] == {"local": 123, "cloud": 123}
 
 
