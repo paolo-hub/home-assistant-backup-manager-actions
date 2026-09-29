@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.1
+
+### Fixed
+
+- Fixed license badge rendering in HACS by replacing the dynamic GitHub license shield with a static MIT badge.
+
 ## 1.0.0
 
 First stable release.
