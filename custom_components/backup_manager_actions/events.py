@@ -93,7 +93,16 @@ class BackupCreatedEventTracker:
 
         if not self._baseline_ready:
             self._seen_backup_ids.update(current_ids)
-            self._emitted_backup_ids.update(current_ids)
+            # Startup history must suppress discovery-driven events, but a BMA
+            # backup can be visible in this first complete snapshot while its
+            # create action is still performing final verification. Mark only
+            # external-source history as already emitted so that a verified
+            # BMA create can still publish its gated event afterwards.
+            self._emitted_backup_ids.update(
+                backup_id
+                for backup_id, backup in by_id.items()
+                if backup.get("source_type") in EXTERNAL_EVENT_SOURCES
+            )
             self._baseline_ready = True
             return []
 
