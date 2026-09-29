@@ -934,6 +934,57 @@ async def test_plan_retention_rejects_missing_agent() -> None:
         raise AssertionError("Unknown retention agent should fail")
 
 
+async def test_plan_and_apply_agree_when_inventory_is_unchanged() -> None:
+    """The dry plan and apply plan must be identical when state is unchanged."""
+    manager = Manager()
+    for backup_id, date in (
+        ("today-new", "2026-09-29T11:00:00+02:00"),
+        ("today-old", "2026-09-29T08:00:00+02:00"),
+        ("yesterday", "2026-09-28T10:00:00+02:00"),
+        ("last-week", "2026-09-20T10:00:00+02:00"),
+        ("last-month", "2026-08-20T10:00:00+02:00"),
+        ("last-year", "2025-12-20T10:00:00+01:00"),
+        ("ancient", "2024-06-20T10:00:00+02:00"),
+    ):
+        add_bma_backup(manager, backup_id, date, job_id="full")
+
+    adapter = BackupManagerActionsAdapter(Hass(manager))
+    now = adapter_module.datetime(
+        2026,
+        9,
+        29,
+        12,
+        0,
+        tzinfo=adapter_module.timezone.utc,
+    )
+    policy = {
+        "source_type": "bma",
+        "job_id": "full",
+        "group_by": None,
+        "agent_ids": ["local"],
+        "keep_last": 1,
+        "daily": 2,
+        "weekly": 2,
+        "monthly": 2,
+        "yearly": 2,
+        "now": now,
+    }
+
+    dry_plan = await adapter.async_plan_retention(**policy)
+    applied = await adapter.async_apply_retention(**policy)
+
+    assert applied["plan"] == dry_plan
+    assert [
+        item["backup_id"]
+        for item in applied["execution"]["deleted"]
+    ] == [
+        item["backup_id"]
+        for item in dry_plan["delete"]
+    ]
+    assert applied["execution"]["deleted_count"] == len(dry_plan["delete"])
+    assert applied["execution"]["already_absent_count"] == 0
+
+
 async def test_apply_retention_recalculates_current_state() -> None:
     manager = Manager()
     add_bma_backup(
@@ -1691,6 +1742,7 @@ async def main() -> None:
     await test_scenario_ha_native_manual_and_automatic_share_one_policy()
     await test_scenario_app_update_per_app_is_independent_end_to_end()
     await test_apply_retention_is_serialized()
+    await test_plan_and_apply_agree_when_inventory_is_unchanged()
     await test_apply_retention_recalculates_current_state()
     await test_apply_retention_preserves_out_of_scope_copies()
     await test_apply_retention_rechecks_protection_before_delete()
