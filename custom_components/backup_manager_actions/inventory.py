@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Iterable, Mapping
+from datetime import datetime
 import re
 from typing import Any
 
@@ -28,6 +29,28 @@ CURRENT_METADATA_VERSION = 1
 CURRENT_METADATA_VERSION_STORAGE = str(CURRENT_METADATA_VERSION)
 
 JOB_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
+
+
+def backup_chronology_key(
+    date_value: Any,
+    backup_id: Any = "",
+) -> tuple[int, float, str, str]:
+    """Return a safe chronological key for diagnostic/event ordering."""
+    raw_date = date_value.strip() if isinstance(date_value, str) else ""
+    normalized = raw_date[:-1] + "+00:00" if raw_date.endswith("Z") else raw_date
+
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except (TypeError, ValueError):
+        parsed = None
+
+    if parsed is None or parsed.tzinfo is None:
+        # Invalid dates must never outrank a valid timestamp when selecting
+        # the latest backup. Keep a deterministic textual fallback for
+        # diagnostic ordering instead of making inventory unavailable.
+        return (0, float("-inf"), raw_date, str(backup_id))
+
+    return (1, parsed.timestamp(), "", str(backup_id))
 
 
 def normalize_job_id(value: Any) -> str | None:
