@@ -168,6 +168,7 @@ class Manager:
 class Hass:
     def __init__(self, manager):
         self.manager = manager
+        self.config = types.SimpleNamespace(time_zone="Europe/Rome")
 
 
 async def create_default_backup(adapter) -> None:
@@ -180,6 +181,42 @@ async def create_default_backup(adapter) -> None:
         include_folders=None,
         name=None,
         password=None,
+    )
+
+
+def add_bma_backup(
+    manager,
+    backup_id,
+    date,
+    *,
+    job_id="full",
+    agents=None,
+):
+    """Insert one normalized BMA-style backup into the manager stub."""
+    metadata = {
+        "backup_manager_actions.managed": True,
+        "backup_manager_actions.metadata_version": "1",
+    }
+    if job_id is not None:
+        metadata["backup_manager_actions.job_id"] = job_id
+
+    manager.backups[backup_id] = Backup(
+        addons=[],
+        backup_id=backup_id,
+        date=date,
+        database_included=True,
+        extra_metadata=metadata,
+        failed_addons=[],
+        failed_agent_ids=[],
+        failed_folders=[],
+        folders=[],
+        homeassistant_included=True,
+        homeassistant_version="2026.9.4",
+        name=backup_id,
+        with_automatic_settings=False,
+        agents=agents
+        if agents is not None
+        else {"local": Status(protected=False, size=100)},
     )
 
 
@@ -577,7 +614,136 @@ async def test_list_and_get_backup() -> None:
     assert details["backup"]["classification_reason"] == "bma_legacy_no_job"
 
 
+async def test_plan_retention_is_read_only() -> None:
+    manager = Manager()
+    add_bma_backup(
+        manager,
+        "new",
+        "2026-09-29T10:00:00+02:00",
+    )
+    add_bma_backup(
+        manager,
+        "old",
+        "2026-09-28T10:00:00+02:00",
+    )
+    adapter = BackupManagerActionsAdapter(Hass(manager))
+
+    result = await adapter.async_plan_retention(
+        source_type="bma",
+        job_id="full",
+        group_by=None,
+        agent_ids=["local"],
+        keep_last=1,
+        daily=0,
+        weekly=0,
+        monthly=0,
+        yearly=0,
+        now=adapter_module.datetime(
+            2026,
+            9,
+            29,
+            12,
+            0,
+            tzinfo=adapter_module.timezone.utc,
+        ),
+    )
+
+    assert [item["backup_id"] for item in result["keep"]] == ["new"]
+    assert [item["backup_id"] for item in result["delete"]] == ["old"]
+    assert result["scope"]["agent_ids"] == ["local"]
+    assert set(manager.backups) == {"new", "old"}
+    assert set(manager.backups["old"].agents) == {"local"}
+
+
+async def test_plan_retention_explicit_scope_ignores_unrelated_agent_error() -> None:
+    manager = Manager()
+    add_bma_backup(
+        manager,
+        "new",
+        "2026-09-29T10:00:00+02:00",
+    )
+    manager.lookup_errors = {"cloud": RuntimeError("cloud unavailable")}
+    adapter = BackupManagerActionsAdapter(Hass(manager))
+
+    result = await adapter.async_plan_retention(
+        source_type="bma",
+        job_id="full",
+        group_by=None,
+        agent_ids=["local"],
+        keep_last=1,
+        daily=0,
+        weekly=0,
+        monthly=0,
+        yearly=0,
+        now=adapter_module.datetime(
+            2026,
+            9,
+            29,
+            12,
+            0,
+            tzinfo=adapter_module.timezone.utc,
+        ),
+    )
+
+    assert result["summary"]["considered"] == 1
+
+
+async def test_plan_retention_omitted_scope_fails_on_any_agent_error() -> None:
+    manager = Manager()
+    add_bma_backup(
+        manager,
+        "new",
+        "2026-09-29T10:00:00+02:00",
+    )
+    manager.lookup_errors = {"cloud": RuntimeError("cloud unavailable")}
+    adapter = BackupManagerActionsAdapter(Hass(manager))
+
+    try:
+        await adapter.async_plan_retention(
+            source_type="bma",
+            job_id="full",
+            group_by=None,
+            agent_ids=None,
+            keep_last=1,
+            daily=0,
+            weekly=0,
+            monthly=0,
+            yearly=0,
+        )
+    except BackupManagerActionsError as err:
+        assert "Retention inventory is incomplete" in str(err)
+        assert "cloud" in str(err)
+    else:
+        raise AssertionError("All-agent retention should fail closed")
+
+
+async def test_plan_retention_rejects_missing_agent() -> None:
+    manager = Manager()
+    adapter = BackupManagerActionsAdapter(Hass(manager))
+
+    try:
+        await adapter.async_plan_retention(
+            source_type="bma",
+            job_id="full",
+            group_by=None,
+            agent_ids=["missing"],
+            keep_last=1,
+            daily=0,
+            weekly=0,
+            monthly=0,
+            yearly=0,
+        )
+    except BackupManagerActionsError as err:
+        assert "Backup agent(s) not available: missing" in str(err)
+    else:
+        raise AssertionError("Unknown retention agent should fail")
+
+
 async def main() -> None:
+    await test_plan_retention_is_read_only()
+    await test_plan_retention_explicit_scope_ignores_unrelated_agent_error()
+    await test_plan_retention_omitted_scope_fails_on_any_agent_error()
+    await test_plan_retention_rejects_missing_agent()
     await test_create_success()
     await test_create_with_full_job_id()
     await test_create_with_partial_job_id()
