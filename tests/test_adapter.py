@@ -36,14 +36,24 @@ exceptions_module = types.ModuleType("homeassistant.exceptions")
 exceptions_module.HomeAssistantError = HomeAssistantError
 components_module = types.ModuleType("homeassistant.components")
 homeassistant_module = types.ModuleType("homeassistant")
+custom_components_module = types.ModuleType("custom_components")
+custom_components_module.__path__ = [str(ROOT / "custom_components")]
+package_module = types.ModuleType("custom_components.backup_manager_actions")
+package_module.__path__ = [
+    str(ROOT / "custom_components" / "backup_manager_actions")
+]
 
 sys.modules.setdefault("homeassistant", homeassistant_module)
 sys.modules.setdefault("homeassistant.components", components_module)
 sys.modules["homeassistant.components.backup"] = backup_module
 sys.modules["homeassistant.core"] = core_module
 sys.modules["homeassistant.exceptions"] = exceptions_module
+sys.modules.setdefault("custom_components", custom_components_module)
+sys.modules.setdefault("custom_components.backup_manager_actions", package_module)
 
-spec = importlib.util.spec_from_file_location("backup_manager_actions_adapter", MODULE)
+spec = importlib.util.spec_from_file_location(
+    "custom_components.backup_manager_actions.adapter", MODULE
+)
 adapter_module = importlib.util.module_from_spec(spec)
 assert spec and spec.loader
 sys.modules[spec.name] = adapter_module
