@@ -546,6 +546,10 @@ all App Update backups compete in one common retention group.
 
 `plan_retention` is read-only and must not mutate backup state.
 
+Before planning, BMA resolves the active agent scope and reads current Backup Manager inventory. Any inventory error from an in-scope agent aborts planning. Errors from agents outside an explicitly supplied scope do not block that scope.
+
+When `agent_ids` is omitted, all currently registered Backup Agents form the scope and an error from any registered agent aborts planning.
+
 It returns a complete structured plan.
 
 Suggested normative response shape:
@@ -613,6 +617,8 @@ For one delete candidate:
 
 The plan-level reclaimable size is the sum of known candidate values and is complete only when every delete candidate is complete.
 
+Delete candidates are returned in deterministic oldest-first order using parsed timezone-aware timestamps, not lexical ISO timestamp text.
+
 ## 13. apply_retention
 
 `apply_retention` must never execute a previously cached plan.
@@ -627,6 +633,8 @@ Execution sequence:
 6. perform deletions from that current plan;
 7. verify each deletion;
 8. return structured execution results.
+
+`apply_retention` operations are serialized within the loaded BMA adapter so two concurrent retention applies cannot execute deletion loops at the same time.
 
 This guarantees that a newly created backup appearing between an earlier dry-run and apply cannot be deleted due to a stale plan.
 
@@ -645,13 +653,19 @@ Delete candidates are processed deterministically in oldest-first order.
 
 For each logical backup:
 
+- re-read the logical backup immediately before deletion;
+- abort if its retention classification no longer matches the current plan;
+- abort if any current in-scope copy has become protected;
+- include a copy that appeared on another in-scope agent after planning;
 - delete only in-scope copies;
 - verify target copies are gone;
 - preserve any copies outside the scope.
 
+If the target backup/copies were already removed by another actor, deletion remains idempotent and is reported as already absent rather than treated as a destructive failure.
+
 If a deletion fails after earlier deletions have already succeeded, BMA must raise `BackupManagerActionsError` with the failing backup and agent context.
 
-Multi-backup deletion is not transactional across independent providers.
+Multi-backup deletion is not transactional across independent providers. If a later candidate fails after earlier candidates were deleted successfully, BMA raises `BackupManagerActionsError` including the failing backup and the IDs already deleted before the failure.
 
 ### 13.3 Success response
 
@@ -672,6 +686,7 @@ execution:
         - hassio.Backup
       remaining_agent_ids: []
   deleted_count: 5
+  already_absent_count: 0
 ```
 
 ## 14. New-backup event
