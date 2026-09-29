@@ -15,9 +15,13 @@ from homeassistant.components.backup import (
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 
+from .inventory import (
+    METADATA_CORRELATION_ID,
+    METADATA_MANAGED,
+    aggregate_inventory,
+    normalize_backup,
+)
 
-METADATA_MANAGED = "backup_manager_actions.managed"
-METADATA_CORRELATION_ID = "backup_manager_actions.correlation_id"
 CREATE_VERIFY_ATTEMPTS = 5
 CREATE_VERIFY_DELAY_SECONDS = 1.0
 
@@ -290,7 +294,7 @@ class BackupManagerActionsAdapter:
         backups, agent_errors = await self.manager.async_get_backups()
         ordered = sorted(backups.values(), key=lambda item: item.date, reverse=True)
         return {
-            "backups": [self._backup_to_dict(backup) for backup in ordered],
+            "backups": [normalize_backup(backup) for backup in ordered],
             "agent_errors": self._errors_to_dict(agent_errors),
         }
 
@@ -298,7 +302,7 @@ class BackupManagerActionsAdapter:
         """Return one logical backup by id."""
         backup, agent_errors = await self.manager.async_get_backup(backup_id)
         return {
-            "backup": self._backup_to_dict(backup) if backup is not None else None,
+            "backup": normalize_backup(backup) if backup is not None else None,
             "agent_errors": self._errors_to_dict(agent_errors),
         }
 
@@ -313,15 +317,22 @@ class BackupManagerActionsAdapter:
             key=lambda item: item.date,
             reverse=True,
         )
-        latest = ordered_backups[0] if ordered_backups else None
+        normalized_backups = [normalize_backup(backup) for backup in ordered_backups]
+        normalized_errors = self._errors_to_dict(agent_errors)
+        inventory_summary = aggregate_inventory(
+            normalized_backups,
+            agents,
+            normalized_errors,
+        )
 
         return {
             "state": str(manager.state),
             "agent_count": len(agents),
             "agents": agents,
             "backup_count": len(backups),
-            "latest_backup": self._backup_to_dict(latest) if latest else None,
-            "agent_errors": self._errors_to_dict(agent_errors),
+            "latest_backup": normalized_backups[0] if normalized_backups else None,
+            "agent_errors": normalized_errors,
+            **inventory_summary,
         }
 
     @staticmethod
@@ -329,42 +340,3 @@ class BackupManagerActionsAdapter:
         """Convert per-agent errors to JSON-friendly strings."""
         return {agent_id: str(error) for agent_id, error in errors.items()}
 
-    @staticmethod
-    def _backup_to_dict(backup: ManagerBackup) -> dict[str, Any]:
-        """Convert a ManagerBackup to JSON-friendly data."""
-        return {
-            "backup_id": backup.backup_id,
-            "name": backup.name,
-            "date": backup.date,
-            "homeassistant_version": backup.homeassistant_version,
-            "homeassistant_included": backup.homeassistant_included,
-            "database_included": backup.database_included,
-            "addons": [
-                {
-                    "slug": addon.slug,
-                    "name": addon.name,
-                    "version": addon.version,
-                }
-                for addon in backup.addons
-            ],
-            "folders": [folder.value for folder in backup.folders],
-            "agents": {
-                agent_id: {
-                    "protected": status.protected,
-                    "size": status.size,
-                }
-                for agent_id, status in backup.agents.items()
-            },
-            "failed_addons": [
-                {
-                    "slug": addon.slug,
-                    "name": addon.name,
-                    "version": addon.version,
-                }
-                for addon in backup.failed_addons
-            ],
-            "failed_agent_ids": list(backup.failed_agent_ids),
-            "failed_folders": [folder.value for folder in backup.failed_folders],
-            "with_automatic_settings": backup.with_automatic_settings,
-            "extra_metadata": dict(backup.extra_metadata),
-        }
