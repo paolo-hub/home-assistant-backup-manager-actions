@@ -506,6 +506,20 @@ def test_timezone_controls_calendar_bucket() -> None:
     assert ids(result["delete"]) == ["old"]
 
 
+def test_delete_order_uses_actual_time_not_raw_iso_text() -> None:
+    """Deletion order remains chronological across different UTC offsets."""
+    result = plan(
+        [
+            backup("keep", "2026-09-29T10:00:00+02:00"),
+            backup("older", "2026-09-29T00:00:00+02:00"),
+            backup("newer", "2026-09-28T23:30:00Z"),
+        ],
+        keep_last=1,
+    )
+
+    assert ids(result["delete"]) == ["older", "newer"]
+
+
 def test_invalid_target_date_fails_closed() -> None:
     """Malformed dates in target inventory stop planning."""
     try:
@@ -531,6 +545,7 @@ def main() -> None:
     test_app_group_by_app()
     test_app_group_by_all()
     test_timezone_controls_calendar_bucket()
+    test_delete_order_uses_actual_time_not_raw_iso_text()
     test_invalid_target_date_fails_closed()
     print("retention planner simulation: OK")
 
