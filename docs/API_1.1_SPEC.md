@@ -630,13 +630,17 @@ Execution sequence:
 3. read current inventory;
 4. abort if scoped inventory has errors;
 5. recalculate the retention plan from current state;
-6. perform deletions from that current plan;
-7. verify each deletion;
-8. return structured execution results.
+6. freeze the policy evaluation timestamp for the complete apply operation;
+7. before every destructive candidate, recalculate the complete policy against current inventory using that frozen timestamp;
+8. delete the candidate only if it is still eligible in the recalculated plan;
+9. verify each deletion;
+10. return structured execution results.
 
 `apply_retention` operations are serialized within the loaded BMA adapter so two concurrent retention applies cannot execute deletion loops at the same time.
 
-This guarantees that a newly created backup appearing between an earlier dry-run and apply cannot be deleted due to a stale plan.
+The per-candidate policy recalculation is a fail-closed hardening rule. If concurrent changes promote a previously planned candidate into `keep_last` or a GFS keep bucket, the operation aborts before deleting that candidate. The frozen evaluation timestamp ensures that a long apply operation cannot change calendar buckets merely because execution crosses a clock or calendar boundary.
+
+This guarantees that a newly created backup appearing between an earlier dry-run and apply cannot be deleted due to a stale plan and that policy drift during a multi-delete apply cannot silently invalidate later candidates.
 
 ### 13.1 Preflight safety
 
@@ -653,7 +657,9 @@ Delete candidates are processed deterministically in oldest-first order.
 
 For each logical backup:
 
+- recalculate the complete current retention plan before the candidate;
 - re-read the logical backup immediately before deletion;
+- abort if the candidate is no longer eligible under the current policy;
 - abort if its retention classification no longer matches the current plan;
 - abort if any current in-scope copy has become protected;
 - include a copy that appeared on another in-scope agent after planning;
@@ -661,7 +667,7 @@ For each logical backup:
 - verify target copies are gone;
 - preserve any copies outside the scope.
 
-If the target backup/copies were already removed by another actor, deletion remains idempotent and is reported as already absent rather than treated as a destructive failure.
+If the target backup or all in-scope target copies were already removed by another actor, deletion remains idempotent and is reported as already absent rather than treated as a destructive failure. A logical backup may still remain on out-of-scope agents in this case.
 
 If a deletion fails after earlier deletions have already succeeded, BMA must raise `BackupManagerActionsError` with the failing backup and agent context.
 
@@ -685,6 +691,7 @@ execution:
         - hassio.local
         - hassio.Backup
       remaining_agent_ids: []
+      target_copies_found_before_delete: true
   deleted_count: 5
   already_absent_count: 0
 ```
