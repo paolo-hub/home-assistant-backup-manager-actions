@@ -58,6 +58,10 @@
           "name": "Cartelle",
           "description": "Cartelle opzionali da includere nel backup."
         },
+        "job_id": {
+          "name": "ID job",
+          "description": "Identificatore stabile opzionale del job BMA usato per classificare il backup, ad esempio full o partial."
+        },
         "name": {
           "name": "Nome backup",
           "description": "Nome opzionale del backup. Se omesso, Home Assistant genera il nome predefinito."
