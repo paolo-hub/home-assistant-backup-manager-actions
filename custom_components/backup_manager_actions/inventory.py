@@ -191,9 +191,12 @@ def _empty_source_size_summary() -> dict[str, Any]:
 def aggregate_inventory(
     backups: Iterable[Mapping[str, Any]],
     agents: Mapping[str, Mapping[str, str]],
+    agent_errors: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Aggregate normalized logical backups into snapshot-friendly summaries."""
     normalized_backups = list(backups)
+    agent_errors = agent_errors or {}
+    inventory_complete = not bool(agent_errors)
 
     source_counts = {source_type: 0 for source_type in SOURCE_TYPES}
     bma_by_job: Counter[str] = Counter()
@@ -219,9 +222,9 @@ def aggregate_inventory(
     }
 
     physical_total_bytes = 0
-    physical_size_complete = True
+    physical_size_complete = inventory_complete
     logical_size_bytes = 0
-    logical_size_complete = True
+    logical_size_complete = inventory_complete
 
     for backup in normalized_backups:
         source_type = backup.get("source_type")
@@ -289,7 +292,25 @@ def aggregate_inventory(
             else:
                 agent_summary["size_complete"] = False
 
+    if agent_errors:
+        for agent_id in agent_errors:
+            agent_summary = per_agent.setdefault(
+                agent_id,
+                {
+                    "name": agents.get(agent_id, {}).get("name"),
+                    "domain": agents.get(agent_id, {}).get("domain"),
+                    "backup_count": 0,
+                    "size_bytes": 0,
+                    "size_complete": False,
+                },
+            )
+            agent_summary["size_complete"] = False
+        for source_summary in per_source_type.values():
+            source_summary["physical_size_complete"] = False
+            source_summary["logical_size_complete"] = False
+
     return {
+        "inventory_complete": inventory_complete,
         "source_counts": source_counts,
         "bma_by_job": dict(sorted(bma_by_job.items())),
         "app_update_by_app": dict(sorted(app_update_by_app.items())),
