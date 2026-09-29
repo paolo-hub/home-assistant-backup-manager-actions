@@ -27,6 +27,7 @@ from .const import (
     CONF_INCLUDE_DATABASE,
     CONF_INCLUDE_FOLDERS,
     CONF_INCLUDE_HOMEASSISTANT,
+    CONF_JOB_ID,
     CONF_NAME,
     CONF_PASSWORD,
     DATA_COORDINATORS,
@@ -39,6 +40,7 @@ from .const import (
     SERVICE_REFRESH,
 )
 from .coordinator import BackupManagerActionsCoordinator
+from .inventory import normalize_job_id
 
 
 def _non_empty_unique_strings(value: list[str]) -> list[str]:
@@ -56,6 +58,16 @@ def _optional_unique_strings(value: list[str]) -> list[str]:
     normalized = [item.strip() for item in value if item.strip()]
     if len(normalized) != len(set(normalized)):
         raise vol.Invalid("Duplicate values are not allowed")
+    return normalized
+
+
+def _job_id(value: str) -> str:
+    """Normalize and validate a BMA job id."""
+    normalized = normalize_job_id(value)
+    if normalized is None:
+        raise vol.Invalid(
+            "job_id must match ^[a-z0-9][a-z0-9_-]{0,63}$"
+        )
     return normalized
 
 
@@ -82,6 +94,7 @@ CREATE_SCHEMA = vol.Schema(
             cv.ensure_list,
             [vol.In([folder.value for folder in Folder])],
         ),
+        vol.Optional(CONF_JOB_ID): vol.All(cv.string, _job_id),
         vol.Optional(CONF_NAME): cv.string,
         vol.Optional(CONF_PASSWORD): cv.string,
     }
@@ -137,6 +150,7 @@ def async_setup_services(
             include_all_addons=call.data[CONF_INCLUDE_ALL_ADDONS],
             include_addons=call.data.get(CONF_INCLUDE_ADDONS) or None,
             include_folders=call.data.get(CONF_INCLUDE_FOLDERS),
+            job_id=call.data.get(CONF_JOB_ID),
             name=(call.data.get(CONF_NAME) or "").strip() or None,
             password=call.data.get(CONF_PASSWORD) or None,
         )
