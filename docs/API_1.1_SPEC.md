@@ -863,6 +863,7 @@ The internal normalized snapshot and the optional response of `backup_manager_ac
 - existing manager state;
 - agents;
 - agent errors;
+- `inventory_complete`, true only when the snapshot has no per-agent inventory errors;
 - total backup count;
 - latest normalized backup;
 - `source_counts` keyed by `bma`, `ha_native`, `app_update`, and `unknown`;
@@ -871,7 +872,7 @@ The internal normalized snapshot and the optional response of `backup_manager_ac
 - `ha_native_breakdown` with `automatic` and `manual_or_other`;
 - `archive_size` with physical/logical totals, completeness flags, per-agent breakdown, and per-source breakdown.
 
-A snapshot with scoped agent errors must preserve those errors explicitly and must not silently fabricate complete counts or sizes.
+A snapshot with agent errors must preserve those errors explicitly, set `inventory_complete = false`, and mark aggregate size completeness false rather than silently presenting partial provider data as complete.
 
 ## 19. Error model
 
