@@ -146,6 +146,24 @@ def test_classification() -> None:
     assert native["classification_reason"] == "ha_native_default"
 
 
+def test_backup_chronology_key_handles_timezone_offsets() -> None:
+    """Order timestamps by real instant rather than their ISO text."""
+    first = inventory.backup_chronology_key(
+        "2026-10-25T02:30:00+02:00",
+        "first",
+    )
+    second = inventory.backup_chronology_key(
+        "2026-10-25T02:15:00+01:00",
+        "second",
+    )
+
+    assert first < second
+    assert inventory.backup_chronology_key(
+        "not-a-date",
+        "invalid",
+    ) < first
+
+
 def test_job_id_normalization() -> None:
     """Keep the public job-id grammar deterministic."""
     assert inventory.normalize_job_id("full") == "full"
@@ -343,6 +361,7 @@ def test_agent_errors_mark_inventory_incomplete() -> None:
 
 def main() -> None:
     test_classification()
+    test_backup_chronology_key_handles_timezone_offsets()
     test_job_id_normalization()
     test_backup_normalization_and_sizes()
     test_inventory_aggregation()
