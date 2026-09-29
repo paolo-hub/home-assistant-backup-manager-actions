@@ -39,6 +39,10 @@ create:
               value: ssl
             - label: Media
               value: media
+    job_id:
+      example: full
+      selector:
+        text:
     name:
       selector:
         text:
