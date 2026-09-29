@@ -77,6 +77,7 @@ class DataUpdateCoordinator:
 
     async def async_request_refresh(self):
         self.data = await self._async_update_data()
+        self._async_refresh_finished()
         return self.data
 
 
@@ -158,6 +159,18 @@ class Adapter:
         return self.responses.pop(0)
 
 
+async def settle_tasks(hass: Hass) -> None:
+    """Wait for tasks spawned while processing a coordinator refresh."""
+    while pending := [task for task in hass.tasks if not task.done()]:
+        await asyncio.gather(*pending)
+
+
+async def refresh(coordinator, hass: Hass) -> None:
+    """Run one coordinator refresh and settle deferred event publication."""
+    await coordinator.async_request_refresh()
+    await settle_tasks(hass)
+
+
 def normalized_backup(
     backup_id: str,
     source_type: str,
@@ -222,12 +235,12 @@ async def test_incomplete_inventory_cannot_establish_baseline() -> None:
     )
 
     adapter.responses.append((snapshot(complete=False), [historical]))
-    await coordinator._async_update_data()
+    await refresh(coordinator, hass)
     assert tracker.baseline_ready is False
     assert hass.bus.events == []
 
     adapter.responses.append((snapshot(complete=True), [historical]))
-    await coordinator._async_update_data()
+    await refresh(coordinator, hass)
     assert tracker.baseline_ready is True
     assert hass.bus.events == []
 
@@ -239,7 +252,7 @@ async def test_incomplete_inventory_cannot_establish_baseline() -> None:
     adapter.responses.append(
         (snapshot(complete=True), [historical, new_backup])
     )
-    await coordinator._async_update_data()
+    await refresh(coordinator, hass)
 
     assert len(hass.bus.events) == 1
     event_type, event_data = hass.bus.events[0]
@@ -255,7 +268,7 @@ async def test_incomplete_refresh_does_not_consume_future_new_id() -> None:
     coordinator = BackupManagerActionsCoordinator(hass, object(), adapter, tracker)
 
     adapter.responses.append((snapshot(complete=True), []))
-    await coordinator._async_update_data()
+    await refresh(coordinator, hass)
 
     new_backup = normalized_backup(
         "app-new",
@@ -264,11 +277,11 @@ async def test_incomplete_refresh_does_not_consume_future_new_id() -> None:
         date="2026-09-29T10:00:00+02:00",
     )
     adapter.responses.append((snapshot(complete=False), [new_backup]))
-    await coordinator._async_update_data()
+    await refresh(coordinator, hass)
     assert hass.bus.events == []
 
     adapter.responses.append((snapshot(complete=True), [new_backup]))
-    await coordinator._async_update_data()
+    await refresh(coordinator, hass)
     assert [event[1]["backup_id"] for event in hass.bus.events] == ["app-new"]
 
 
@@ -280,7 +293,7 @@ async def test_bma_event_waits_for_verified_create() -> None:
     coordinator = BackupManagerActionsCoordinator(hass, object(), adapter, tracker)
 
     adapter.responses.append((snapshot(complete=True), []))
-    await coordinator._async_update_data()
+    await refresh(coordinator, hass)
 
     bma = normalized_backup(
         "bma-new",
@@ -289,7 +302,7 @@ async def test_bma_event_waits_for_verified_create() -> None:
         date="2026-09-29T11:00:00+02:00",
     )
     adapter.responses.append((snapshot(complete=True), [bma]))
-    await coordinator._async_update_data()
+    await refresh(coordinator, hass)
     assert hass.bus.events == []
 
     coordinator.async_publish_verified_bma_create(verified_result())
@@ -299,7 +312,7 @@ async def test_bma_event_waits_for_verified_create() -> None:
     assert len(hass.bus.events) == 1
 
     adapter.responses.append((snapshot(complete=True), [bma]))
-    await coordinator._async_update_data()
+    await refresh(coordinator, hass)
     assert len(hass.bus.events) == 1
 
 
@@ -311,7 +324,7 @@ async def test_late_agent_copy_does_not_duplicate_event() -> None:
     coordinator = BackupManagerActionsCoordinator(hass, object(), adapter, tracker)
 
     adapter.responses.append((snapshot(complete=True), []))
-    await coordinator._async_update_data()
+    await refresh(coordinator, hass)
 
     first = normalized_backup(
         "native-new",
@@ -320,7 +333,7 @@ async def test_late_agent_copy_does_not_duplicate_event() -> None:
         agents={"local": {"size": 100, "protected": False}},
     )
     adapter.responses.append((snapshot(complete=True), [first]))
-    await coordinator._async_update_data()
+    await refresh(coordinator, hass)
     assert len(hass.bus.events) == 1
 
     with_copy = normalized_backup(
@@ -333,7 +346,7 @@ async def test_late_agent_copy_does_not_duplicate_event() -> None:
         },
     )
     adapter.responses.append((snapshot(complete=True), [with_copy]))
-    await coordinator._async_update_data()
+    await refresh(coordinator, hass)
     assert len(hass.bus.events) == 1
 
 
@@ -349,7 +362,7 @@ async def test_backup_manager_idle_event_requests_refresh() -> None:
     assert adapter.manager.backup_callback is not None
 
     adapter.manager.backup_callback(IdleEvent())
-    await asyncio.gather(*hass.tasks)
+    await settle_tasks(hass)
     assert tracker.baseline_ready is True
 
 
