@@ -601,7 +601,11 @@ class BackupManagerActionsAdapter:
                     backup_id=candidate["backup_id"],
                     agent_ids=target_agent_ids,
                 )
-                result["target_copies_found_before_delete"] = True
+                result["target_copies_found_before_delete"] = bool(
+                    set(result["target_agent_ids"]).intersection(
+                        result["previous_agent_ids"]
+                    )
+                )
             except BackupManagerActionsError as err:
                 deleted_ids = [
                     item["backup_id"]
