@@ -12,7 +12,8 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .adapter import BackupManagerActionsAdapter
-from .const import DOMAIN
+from .const import DOMAIN, EVENT_BACKUP_CREATED
+from .events import BackupCreatedEventTracker
 
 LOGGER = logging.getLogger(__name__)
 
@@ -25,6 +26,7 @@ class BackupManagerActionsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         hass: HomeAssistant,
         entry: ConfigEntry,
         adapter: BackupManagerActionsAdapter,
+        event_tracker: BackupCreatedEventTracker,
     ) -> None:
         """Initialize the coordinator."""
         super().__init__(
@@ -34,14 +36,31 @@ class BackupManagerActionsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             name=DOMAIN,
         )
         self.adapter = adapter
+        self._event_tracker = event_tracker
         self._unsubscribers: list[Callable[[], None]] = []
 
     async def _async_update_data(self) -> dict[str, Any]:
-        """Fetch a coherent snapshot from the Backup Manager."""
+        """Fetch a coherent snapshot and emit events from complete inventories."""
         try:
-            return await self.adapter.async_snapshot()
+            snapshot, backups = await self.adapter.async_snapshot_with_backups()
         except Exception as err:
             raise UpdateFailed(str(err)) from err
+
+        if snapshot.get("inventory_complete") is True:
+            for event_data in self._event_tracker.process_complete_inventory(backups):
+                self.hass.bus.async_fire(EVENT_BACKUP_CREATED, event_data)
+
+        return snapshot
+
+    @callback
+    def async_publish_verified_bma_create(
+        self,
+        result: dict[str, Any],
+    ) -> None:
+        """Emit one event after a BMA create completed verification."""
+        event_data = self._event_tracker.record_verified_bma_create(result)
+        if event_data is not None:
+            self.hass.bus.async_fire(EVENT_BACKUP_CREATED, event_data)
 
     @callback
     def async_subscribe(self) -> None:
