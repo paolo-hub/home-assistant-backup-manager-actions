@@ -8,7 +8,7 @@
 
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2026.9%2B-41BDF5?style=flat-square&logo=home-assistant&logoColor=white)](https://www.home-assistant.io/)
 [![HACS](https://img.shields.io/badge/HACS-Custom-41BDF5?style=flat-square)](https://www.hacs.xyz/)
-[![License](https://img.shields.io/github/license/paolo-hub/home-assistant-backup-manager-actions?style=flat-square)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 [![Last commit](https://img.shields.io/github/last-commit/paolo-hub/home-assistant-backup-manager-actions?style=flat-square)](https://github.com/paolo-hub/home-assistant-backup-manager-actions/commits/main)
 
 **Backup Manager Actions** is a Home Assistant custom integration that exposes the native Backup Manager to automations. It lets automations create, inspect, verify, and delete logical backups across multiple Backup Agents while leaving storage, encryption, credentials, and restore handling to Home Assistant and the selected providers.
