@@ -9,16 +9,23 @@ from uuid import uuid4
 from homeassistant.components.backup import (
     BackupManager,
     Folder,
+    ManagerBackup,
     async_get_manager,
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 
 from .inventory import (
+    CURRENT_METADATA_VERSION,
+    CURRENT_METADATA_VERSION_STORAGE,
     METADATA_CORRELATION_ID,
+    METADATA_JOB_ID,
     METADATA_MANAGED,
+    METADATA_VERSION,
+    SOURCE_BMA,
     aggregate_inventory,
     normalize_backup,
+    normalize_job_id,
 )
 
 CREATE_VERIFY_ATTEMPTS = 5
@@ -71,9 +78,18 @@ class BackupManagerActionsAdapter:
         include_folders: list[str] | None,
         name: str | None,
         password: str | None,
+        job_id: str | None = None,
     ) -> dict[str, Any]:
-        """Create a backup and verify that every requested agent stored it."""
+        """Create a backup and verify destinations and BMA metadata."""
         self.validate_agent_ids(agent_ids)
+
+        normalized_job_id: str | None = None
+        if job_id is not None:
+            normalized_job_id = normalize_job_id(job_id)
+            if normalized_job_id is None:
+                raise BackupManagerActionsError(
+                    "Invalid job_id; expected ^[a-z0-9][a-z0-9_-]{0,63}$"
+                )
 
         if include_all_addons and include_addons:
             raise BackupManagerActionsError(
@@ -88,12 +104,17 @@ class BackupManagerActionsAdapter:
 
         manager = self.manager
         correlation_id = uuid4().hex
+        extra_metadata: dict[str, bool | str] = {
+            METADATA_MANAGED: True,
+            METADATA_CORRELATION_ID: correlation_id,
+            METADATA_VERSION: CURRENT_METADATA_VERSION_STORAGE,
+        }
+        if normalized_job_id is not None:
+            extra_metadata[METADATA_JOB_ID] = normalized_job_id
+
         new_backup = await manager.async_create_backup(
             agent_ids=agent_ids,
-            extra_metadata={
-                METADATA_MANAGED: True,
-                METADATA_CORRELATION_ID: correlation_id,
-            },
+            extra_metadata=extra_metadata,
             include_addons=include_addons,
             include_all_addons=include_all_addons,
             include_database=include_database,
@@ -183,11 +204,39 @@ class BackupManagerActionsAdapter:
                 + ")"
             )
 
+        normalized_backup = normalize_backup(backup)
+        metadata_errors: list[str] = []
+        if normalized_backup["source_type"] != SOURCE_BMA:
+            metadata_errors.append(
+                "source_type is " + str(normalized_backup["source_type"])
+            )
+        if normalized_backup["metadata_version"] != CURRENT_METADATA_VERSION:
+            metadata_errors.append(
+                "metadata_version is "
+                + str(normalized_backup["metadata_version"])
+                + f", expected {CURRENT_METADATA_VERSION}"
+            )
+        if normalized_backup["job_id"] != normalized_job_id:
+            metadata_errors.append(
+                "job_id is "
+                + str(normalized_backup["job_id"])
+                + f", expected {normalized_job_id}"
+            )
+        if metadata_errors:
+            raise BackupManagerActionsError(
+                f"Backup {backup.backup_id} metadata verification failed ("
+                + " | ".join(metadata_errors)
+                + ")"
+            )
+
         return {
             "backup_id": backup.backup_id,
             "backup_job_id": new_backup.backup_job_id,
             "name": backup.name,
             "date": backup.date,
+            "source_type": normalized_backup["source_type"],
+            "job_id": normalized_backup["job_id"],
+            "metadata_version": normalized_backup["metadata_version"],
             "requested_agent_ids": list(agent_ids),
             "stored_agent_ids": stored_agent_ids,
             "protected_by_agent": {
