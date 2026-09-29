@@ -993,6 +993,8 @@ At minimum, automated tests must cover:
 - backup present only on subset of scoped agents;
 - out-of-scope copies preserved;
 - protected copy in scope;
+- target copies disappearing after planning while out-of-scope copies remain;
+- policy drift between destructive candidates;
 - delete verification failure.
 
 ### Event
