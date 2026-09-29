@@ -753,30 +753,40 @@ Add:
 
 The total logical backup count remains the existing Backups sensor.
 
-Breakdowns should use attributes rather than creating one entity per job/App/agent.
+The existing total Backups sensor keeps its unique ID and state semantics and adds:
+
+- `inventory_complete`
+- `source_counts`, including the `unknown` class
+
+Breakdowns use attributes rather than creating one entity per job/App/agent.
+
+Every new class-count sensor also exposes `inventory_complete` so a partial multi-agent inventory is explicit.
 
 ### 15.3 Count sensor attributes
 
-BMA count may expose:
+BMA count exposes:
 
 ```yaml
+inventory_complete: true
 by_job:
   full: 10
   partial: 24
   unassigned: 2
 ```
 
-App Update count may expose:
+App Update count exposes:
 
 ```yaml
+inventory_complete: true
 by_app:
   core_mosquitto: 3
   other_slug: 2
 ```
 
-HA Native may expose:
+HA Native exposes:
 
 ```yaml
+inventory_complete: true
 automatic: 2
 manual_or_other: 4
 ```
@@ -862,7 +872,14 @@ per_source_type:
 
 The aggregate state provides the overall physical archive size.
 
-Per-agent values are deliberately exposed as nested attributes so a dashboard such as mini-graph-card can graph each destination separately without creating one BMA entity per discovered agent.
+Per-agent values are deliberately exposed as nested attributes so the package/dashboard can derive or graph each destination separately without creating one BMA entity per discovered agent.
+
+The Archive Size sensor also exposes:
+
+- `inventory_complete`
+- `agent_errors`
+
+The numeric state remains the sum of currently known physical copy sizes even when an agent is unavailable; completeness attributes must then be false so that partial data is never presented as complete.
 
 Dedicated per-agent sensors are not part of the 1.1 contract.
 
@@ -970,6 +987,18 @@ At minimum, automated tests must cover:
 - missing copy size;
 - per-agent totals;
 - per-source totals.
+
+### Diagnostic entities
+
+- existing 1.0.x sensor unique IDs unchanged;
+- total logical backup sensor keeps its state and exposes source breakdown;
+- BMA count and by-job attributes;
+- HA Native count and automatic/manual informational attributes;
+- App Update count and per-App attributes;
+- Latest Backup keeps backup_id as state and exposes normalized metadata;
+- Archive Size uses bytes/data-size/measurement semantics;
+- Archive Size exposes per-agent and per-source attributes;
+- incomplete inventory remains numerically observable but explicitly marked incomplete.
 
 ## 21. Implementation sequence
 
