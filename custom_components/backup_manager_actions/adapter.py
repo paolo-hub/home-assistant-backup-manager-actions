@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
 
@@ -27,6 +28,7 @@ from .inventory import (
     normalize_backup,
     normalize_job_id,
 )
+from .retention import RetentionPolicyError, plan_retention
 
 CREATE_VERIFY_ATTEMPTS = 5
 CREATE_VERIFY_DELAY_SECONDS = 1.0
@@ -252,6 +254,89 @@ class BackupManagerActionsAdapter:
                 if agent_id in requested
             },
         }
+
+    def _resolve_retention_scope(
+        self,
+        agent_ids: list[str] | None,
+    ) -> list[str]:
+        """Resolve and validate the Backup Agent scope for retention."""
+        if agent_ids is not None:
+            self.validate_agent_ids(agent_ids)
+            scope = sorted(set(agent_ids))
+        else:
+            scope = sorted(self.manager.backup_agents)
+
+        if not scope:
+            raise BackupManagerActionsError(
+                "No Backup Agents are available for retention"
+            )
+        return scope
+
+    async def _async_retention_inventory(
+        self,
+        scope_agent_ids: list[str],
+    ) -> list[dict[str, Any]]:
+        """Return normalized inventory after fail-closed scoped error checks."""
+        backups, agent_errors = await self.manager.async_get_backups()
+        relevant_errors = {
+            agent_id: error
+            for agent_id, error in agent_errors.items()
+            if agent_id in scope_agent_ids
+        }
+        if relevant_errors:
+            errors = "; ".join(
+                f"{agent_id}: {error}"
+                for agent_id, error in sorted(relevant_errors.items())
+            )
+            raise BackupManagerActionsError(
+                "Retention inventory is incomplete for scoped agent(s): "
+                + errors
+            )
+
+        return [
+            normalize_backup(backup)
+            for backup in backups.values()
+        ]
+
+    async def async_plan_retention(
+        self,
+        *,
+        source_type: str,
+        job_id: str | None,
+        group_by: str | None,
+        agent_ids: list[str] | None,
+        keep_last: int,
+        daily: int,
+        weekly: int,
+        monthly: int,
+        yearly: int,
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
+        """Calculate a read-only retention plan from current inventory."""
+        scope_agent_ids = self._resolve_retention_scope(agent_ids)
+        normalized_backups = await self._async_retention_inventory(
+            scope_agent_ids
+        )
+        evaluated_at = now or datetime.now(timezone.utc)
+        timezone_name = self._hass.config.time_zone
+
+        try:
+            return plan_retention(
+                normalized_backups,
+                source_type=source_type,
+                job_id=job_id,
+                group_by=group_by,
+                scope_agent_ids=scope_agent_ids,
+                keep_last=keep_last,
+                daily=daily,
+                weekly=weekly,
+                monthly=monthly,
+                yearly=yearly,
+                now=evaluated_at,
+                timezone_name=timezone_name,
+            )
+        except RetentionPolicyError as err:
+            raise BackupManagerActionsError(str(err)) from err
 
     async def async_delete(
         self,
