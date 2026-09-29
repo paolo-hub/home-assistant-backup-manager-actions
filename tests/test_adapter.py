@@ -392,6 +392,18 @@ async def test_snapshot_and_serialization() -> None:
     assert snapshot["agents"]["cloud"]["domain"] == "s3_compatible"
     assert snapshot["latest_backup"]["backup_id"] == "abc12345"
     assert snapshot["latest_backup"]["addons"][0]["slug"] == "core_mosquitto"
+    assert snapshot["latest_backup"]["source_type"] == "bma"
+    assert snapshot["latest_backup"]["classification_reason"] == "bma_legacy_no_job"
+    assert snapshot["inventory_complete"] is True
+    assert snapshot["source_counts"] == {
+        "bma": 1,
+        "ha_native": 0,
+        "app_update": 0,
+        "unknown": 0,
+    }
+    assert snapshot["bma_by_job"] == {"unassigned": 1}
+    assert snapshot["archive_size"]["physical_total_bytes"] == 246
+    assert snapshot["archive_size"]["logical_size_bytes"] == 123
 
 
 async def test_list_and_get_backup() -> None:
@@ -402,7 +414,11 @@ async def test_list_and_get_backup() -> None:
     listing = await adapter.async_list_backups()
     details = await adapter.async_get_backup("abc12345")
     assert listing["backups"][0]["backup_id"] == "abc12345"
+    assert listing["backups"][0]["source_type"] == "bma"
+    assert listing["backups"][0]["physical_size_bytes"] == 246
+    assert listing["backups"][0]["logical_size_bytes"] == 123
     assert details["backup"]["agents"]["cloud"]["size"] == 123
+    assert details["backup"]["classification_reason"] == "bma_legacy_no_job"
 
 
 async def main() -> None:
