@@ -5,7 +5,12 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from typing import Any
 
-from .inventory import SOURCE_APP_UPDATE, SOURCE_BMA, SOURCE_HA_NATIVE
+from .inventory import (
+    SOURCE_APP_UPDATE,
+    SOURCE_BMA,
+    SOURCE_HA_NATIVE,
+    backup_chronology_key,
+)
 
 EXTERNAL_EVENT_SOURCES = frozenset({SOURCE_HA_NATIVE, SOURCE_APP_UPDATE})
 
@@ -111,9 +116,9 @@ class BackupCreatedEventTracker:
 
         ordered_new = sorted(
             (by_id[backup_id] for backup_id in new_ids),
-            key=lambda backup: (
-                str(backup.get("date") or ""),
-                str(backup["backup_id"]),
+            key=lambda backup: backup_chronology_key(
+                backup.get("date"),
+                backup["backup_id"],
             ),
         )
 
