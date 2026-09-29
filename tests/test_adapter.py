@@ -122,6 +122,9 @@ class Manager:
         self.sticky_delete_backup_ids: set[str] = set()
         self.protect_on_lookup_backup_ids: set[str] = set()
         self.late_copy_on_lookup: dict[str, str] = {}
+        self.delete_delay_seconds = 0.0
+        self.delete_active = 0
+        self.max_delete_active = 0
         self.omit_metadata_keys: set[str] = set()
 
     async def async_create_backup(self, **kwargs):
@@ -168,17 +171,28 @@ class Manager:
         if backup is None:
             return {}
 
-        targets = set(backup.agents) if agent_ids is None else set(agent_ids)
-        sticky_agents = set(self.sticky_delete_agents)
-        if backup_id in self.sticky_delete_backup_ids:
-            sticky_agents.update(targets)
-        for agent_id in targets - sticky_agents:
-            backup.agents.pop(agent_id, None)
+        self.delete_active += 1
+        self.max_delete_active = max(
+            self.max_delete_active,
+            self.delete_active,
+        )
+        try:
+            if self.delete_delay_seconds:
+                await asyncio.sleep(self.delete_delay_seconds)
 
-        if not backup.agents:
-            self.backups.pop(backup_id, None)
+            targets = set(backup.agents) if agent_ids is None else set(agent_ids)
+            sticky_agents = set(self.sticky_delete_agents)
+            if backup_id in self.sticky_delete_backup_ids:
+                sticky_agents.update(targets)
+            for agent_id in targets - sticky_agents:
+                backup.agents.pop(agent_id, None)
 
-        return dict(self.delete_errors)
+            if not backup.agents:
+                self.backups.pop(backup_id, None)
+
+            return dict(self.delete_errors)
+        finally:
+            self.delete_active -= 1
 
 
 class Hass:
@@ -1011,7 +1025,73 @@ async def test_apply_retention_failure_reports_prior_deletions() -> None:
     assert "keep" in manager.backups
 
 
+async def test_apply_retention_is_serialized() -> None:
+    manager = Manager()
+    add_bma_backup(
+        manager,
+        "keep",
+        "2026-09-29T10:00:00+02:00",
+    )
+    add_bma_backup(
+        manager,
+        "old-1",
+        "2026-09-27T10:00:00+02:00",
+    )
+    add_bma_backup(
+        manager,
+        "old-2",
+        "2026-09-28T10:00:00+02:00",
+    )
+    manager.delete_delay_seconds = 0.01
+    adapter = BackupManagerActionsAdapter(Hass(manager))
+    now = adapter_module.datetime(
+        2026,
+        9,
+        29,
+        12,
+        0,
+        tzinfo=adapter_module.timezone.utc,
+    )
+
+    first, second = await asyncio.gather(
+        adapter.async_apply_retention(
+            source_type="bma",
+            job_id="full",
+            group_by=None,
+            agent_ids=["local"],
+            keep_last=1,
+            daily=0,
+            weekly=0,
+            monthly=0,
+            yearly=0,
+            now=now,
+        ),
+        adapter.async_apply_retention(
+            source_type="bma",
+            job_id="full",
+            group_by=None,
+            agent_ids=["local"],
+            keep_last=1,
+            daily=0,
+            weekly=0,
+            monthly=0,
+            yearly=0,
+            now=now,
+        ),
+    )
+
+    assert manager.max_delete_active == 1
+    assert sorted(
+        [
+            first["execution"]["deleted_count"],
+            second["execution"]["deleted_count"],
+        ]
+    ) == [0, 2]
+    assert set(manager.backups) == {"keep"}
+
+
 async def main() -> None:
+    await test_apply_retention_is_serialized()
     await test_apply_retention_recalculates_current_state()
     await test_apply_retention_preserves_out_of_scope_copies()
     await test_apply_retention_rechecks_protection_before_delete()
