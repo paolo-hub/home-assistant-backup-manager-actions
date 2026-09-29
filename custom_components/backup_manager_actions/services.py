@@ -89,15 +89,28 @@ def _job_id(value: str) -> str:
 
 
 def _non_negative_int(value: Any) -> int:
-    """Normalize a retention counter and reject booleans/negative values."""
+    """Normalize a retention counter without silently truncating fractions."""
+    error = "Retention counters must be integers >= 0"
+
     if isinstance(value, bool):
-        raise vol.Invalid("Retention counters must be integers >= 0")
-    try:
+        raise vol.Invalid(error)
+
+    if isinstance(value, int):
+        normalized = value
+    elif isinstance(value, float):
+        if not value.is_integer():
+            raise vol.Invalid(error)
         normalized = int(value)
-    except (TypeError, ValueError) as err:
-        raise vol.Invalid("Retention counters must be integers >= 0") from err
+    elif isinstance(value, str):
+        stripped = value.strip()
+        if not stripped.isascii() or not stripped.isdecimal():
+            raise vol.Invalid(error)
+        normalized = int(stripped)
+    else:
+        raise vol.Invalid(error)
+
     if normalized < 0:
-        raise vol.Invalid("Retention counters must be integers >= 0")
+        raise vol.Invalid(error)
     return normalized
 
 
