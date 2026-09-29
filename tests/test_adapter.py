@@ -125,6 +125,7 @@ class Manager:
         self.late_copy_on_lookup: dict[str, str] = {}
         self.remove_on_lookup_backup_ids: set[str] = set()
         self.remove_agent_on_lookup: dict[str, str] = {}
+        self.remove_agent_on_lookup_countdown: dict[str, tuple[str, int]] = {}
         self.metadata_on_lookup: dict[str, dict] = {}
         self.lookup_errors_on_get_backup: dict[str, dict[str, Exception]] = {}
         self.delete_delay_seconds = 0.0
@@ -176,6 +177,23 @@ class Manager:
             if not backup.agents:
                 self.backups.pop(backup_id, None)
                 backup = None
+        if (
+            backup is not None
+            and backup_id in self.remove_agent_on_lookup_countdown
+        ):
+            agent_id, remaining = self.remove_agent_on_lookup_countdown[backup_id]
+            remaining -= 1
+            if remaining <= 0:
+                self.remove_agent_on_lookup_countdown.pop(backup_id, None)
+                backup.agents.pop(agent_id, None)
+                if not backup.agents:
+                    self.backups.pop(backup_id, None)
+                    backup = None
+            else:
+                self.remove_agent_on_lookup_countdown[backup_id] = (
+                    agent_id,
+                    remaining,
+                )
         if backup is not None and backup_id in self.protect_on_lookup_backup_ids:
             if "local" in backup.agents:
                 backup.agents["local"].protected = True
@@ -1372,6 +1390,62 @@ async def test_apply_retention_counts_disappeared_scoped_copy_as_already_absent(
     assert set(manager.backups["expire"].agents) == {"cloud"}
 
 
+async def test_apply_retention_reports_copy_removed_after_revalidation() -> None:
+    """A target copy vanishing just before delete is already absent, not deleted."""
+    manager = Manager()
+    add_bma_backup(
+        manager,
+        "keep",
+        "2026-09-29T10:00:00+02:00",
+        agents={"local": Status(protected=False, size=100)},
+    )
+    add_bma_backup(
+        manager,
+        "expire",
+        "2026-09-28T10:00:00+02:00",
+        agents={
+            "local": Status(protected=False, size=100),
+            "cloud": Status(protected=False, size=120),
+        },
+    )
+
+    # First get happens during retention revalidation; second get happens
+    # inside async_delete immediately before deletion.
+    manager.remove_agent_on_lookup_countdown = {
+        "expire": ("local", 2)
+    }
+    adapter = BackupManagerActionsAdapter(Hass(manager))
+
+    result = await adapter.async_apply_retention(
+        source_type="bma",
+        job_id="full",
+        group_by=None,
+        agent_ids=["local"],
+        keep_last=1,
+        daily=0,
+        weekly=0,
+        monthly=0,
+        yearly=0,
+        now=adapter_module.datetime(
+            2026,
+            9,
+            29,
+            12,
+            0,
+            tzinfo=adapter_module.timezone.utc,
+        ),
+    )
+
+    assert result["execution"]["deleted_count"] == 0
+    assert result["execution"]["already_absent_count"] == 1
+    item = result["execution"]["deleted"][0]
+    assert item["found_before_delete"] is True
+    assert item["target_copies_found_before_delete"] is False
+    assert item["previous_agent_ids"] == ["cloud"]
+    assert item["remaining_agent_ids"] == ["cloud"]
+    assert set(manager.backups["expire"].agents) == {"cloud"}
+
+
 async def test_apply_retention_revalidates_policy_between_candidates() -> None:
     manager = Manager()
     add_bma_backup(
@@ -1750,6 +1824,7 @@ async def main() -> None:
     await test_apply_retention_aborts_on_late_classification_change()
     await test_apply_retention_aborts_on_late_scoped_agent_error()
     await test_apply_retention_counts_disappeared_scoped_copy_as_already_absent()
+    await test_apply_retention_reports_copy_removed_after_revalidation()
     await test_apply_retention_revalidates_policy_between_candidates()
     await test_apply_retention_deletes_late_in_scope_copy()
     await test_apply_retention_failure_reports_prior_deletions()
