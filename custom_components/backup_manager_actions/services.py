@@ -40,6 +40,7 @@ from .const import (
     SERVICE_REFRESH,
 )
 from .coordinator import BackupManagerActionsCoordinator
+from .events import BackupCreatedEventTracker
 from .inventory import normalize_job_id
 
 
@@ -139,6 +140,7 @@ async def _async_refresh_coordinators(hass: HomeAssistant) -> None:
 def async_setup_services(
     hass: HomeAssistant,
     adapter: BackupManagerActionsAdapter,
+    event_tracker: BackupCreatedEventTracker,
 ) -> None:
     """Register admin-only actions at integration setup time."""
 
@@ -154,6 +156,20 @@ def async_setup_services(
             name=(call.data.get(CONF_NAME) or "").strip() or None,
             password=call.data.get(CONF_PASSWORD) or None,
         )
+        coordinators: set[BackupManagerActionsCoordinator] = hass.data[DOMAIN].get(
+            DATA_COORDINATORS,
+            set(),
+        )
+        if coordinators:
+            for coordinator in tuple(coordinators):
+                coordinator.async_publish_verified_bma_create(result)
+        else:
+            event_data = event_tracker.record_verified_bma_create(result)
+            if event_data is not None:
+                from .const import EVENT_BACKUP_CREATED
+
+                hass.bus.async_fire(EVENT_BACKUP_CREATED, event_data)
+
         await _async_refresh_coordinators(hass)
         return result if call.return_response else None
 
