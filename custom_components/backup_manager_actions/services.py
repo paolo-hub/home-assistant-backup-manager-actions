@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any
-
 import voluptuous as vol
 
 from homeassistant.components.backup import Folder
@@ -57,7 +55,12 @@ from .inventory import (
     SOURCE_HA_NATIVE,
     normalize_job_id,
 )
-from .retention import APP_GROUP_BY_ALL, APP_GROUP_BY_APP
+from .retention import (
+    APP_GROUP_BY_ALL,
+    APP_GROUP_BY_APP,
+    RetentionPolicyError,
+    normalize_retention_counter,
+)
 
 
 def _non_empty_unique_strings(value: list[str]) -> list[str]:
@@ -88,30 +91,12 @@ def _job_id(value: str) -> str:
     return normalized
 
 
-def _non_negative_int(value: Any) -> int:
-    """Normalize a retention counter without silently truncating fractions."""
-    error = "Retention counters must be integers >= 0"
-
-    if isinstance(value, bool):
-        raise vol.Invalid(error)
-
-    if isinstance(value, int):
-        normalized = value
-    elif isinstance(value, float):
-        if not value.is_integer():
-            raise vol.Invalid(error)
-        normalized = int(value)
-    elif isinstance(value, str):
-        stripped = value.strip()
-        if not stripped.isascii() or not stripped.isdecimal():
-            raise vol.Invalid(error)
-        normalized = int(stripped)
-    else:
-        raise vol.Invalid(error)
-
-    if normalized < 0:
-        raise vol.Invalid(error)
-    return normalized
+def _retention_counter(value: object) -> int:
+    """Normalize one public retention counter for the action schema."""
+    try:
+        return normalize_retention_counter(value)
+    except RetentionPolicyError as err:
+        raise vol.Invalid(str(err)) from err
 
 
 AGENT_IDS_SCHEMA = vol.All(
@@ -175,11 +160,11 @@ RETENTION_SCHEMA = vol.Schema(
             [APP_GROUP_BY_APP, APP_GROUP_BY_ALL]
         ),
         vol.Optional(CONF_AGENT_IDS): AGENT_IDS_SCHEMA,
-        vol.Optional(CONF_KEEP_LAST, default=0): _non_negative_int,
-        vol.Optional(CONF_DAILY, default=0): _non_negative_int,
-        vol.Optional(CONF_WEEKLY, default=0): _non_negative_int,
-        vol.Optional(CONF_MONTHLY, default=0): _non_negative_int,
-        vol.Optional(CONF_YEARLY, default=0): _non_negative_int,
+        vol.Optional(CONF_KEEP_LAST, default=0): _retention_counter,
+        vol.Optional(CONF_DAILY, default=0): _retention_counter,
+        vol.Optional(CONF_WEEKLY, default=0): _retention_counter,
+        vol.Optional(CONF_MONTHLY, default=0): _retention_counter,
+        vol.Optional(CONF_YEARLY, default=0): _retention_counter,
     }
 )
 
