@@ -723,7 +723,7 @@ For `ha_native` and `app_update` backups:
 - historical backups in the baseline do not emit events;
 - a new logical `backup_id` seen later in a complete snapshot emits one event;
 - discovery-driven events are queued until the coordinator has committed the refreshed snapshot, avoiding publication from inside the data-fetch phase;
-- if multiple new logical backups are discovered together, events are emitted deterministically in ascending `(date, backup_id)` order;
+- if multiple new logical backups are discovered together, events are emitted deterministically by ascending real timestamp and then `backup_id`; ISO offsets are parsed and must not be compared lexically;
 - a later additional copy of the same logical backup on another agent does not emit another backup-created event;
 - discovered `bma` and `unknown` backups do not use this external-discovery event path.
 
@@ -819,7 +819,7 @@ The automatic/manual split is informational only and does not change the top-lev
 
 The existing unique ID is preserved.
 
-Its state remains the latest logical `backup_id`.
+Its state remains the latest logical `backup_id`. "Latest" is determined from the real timezone-aware timestamp, not lexical ISO date text, so different UTC offsets cannot invert chronology.
 
 Attributes are extended with normalized fields:
 
