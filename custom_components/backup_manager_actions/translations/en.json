@@ -21,6 +21,18 @@
       },
       "latest_backup": {
         "name": "Latest backup"
+      },
+      "bma_backups": {
+        "name": "BMA backups"
+      },
+      "ha_native_backups": {
+        "name": "HA native backups"
+      },
+      "app_update_backups": {
+        "name": "App update backups"
+      },
+      "archive_size": {
+        "name": "Backup archive size"
       }
     },
     "binary_sensor": {
