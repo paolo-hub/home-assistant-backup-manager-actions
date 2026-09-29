@@ -241,6 +241,27 @@ class BackupManagerActionsAdapter:
                 + str(normalized_backup["job_id"])
                 + f", expected {normalized_job_id}"
             )
+        stored_metadata_version = backup.extra_metadata.get(METADATA_VERSION)
+        if stored_metadata_version != CURRENT_METADATA_VERSION_STORAGE:
+            metadata_errors.append(
+                "stored metadata_version is "
+                + repr(stored_metadata_version)
+                + f", expected {CURRENT_METADATA_VERSION_STORAGE!r}"
+            )
+
+        stored_job_present = METADATA_JOB_ID in backup.extra_metadata
+        stored_job_id = backup.extra_metadata.get(METADATA_JOB_ID)
+        if normalized_job_id is None:
+            if stored_job_present:
+                metadata_errors.append(
+                    "unexpected stored job_id " + repr(stored_job_id)
+                )
+        elif stored_job_id != normalized_job_id:
+            metadata_errors.append(
+                "stored job_id is "
+                + repr(stored_job_id)
+                + f", expected {normalized_job_id!r}"
+            )
         if metadata_errors:
             raise BackupManagerActionsError(
                 f"Backup {backup.backup_id} metadata verification failed ("
