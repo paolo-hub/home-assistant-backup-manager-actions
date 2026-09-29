@@ -41,5 +41,7 @@ jobs:
           python-version: "3.13"
       - name: Compile integration
         run: python -m compileall -q custom_components tests
+      - name: Run inventory simulation
+        run: python tests/test_inventory.py
       - name: Run adapter simulation
         run: python tests/test_adapter.py
