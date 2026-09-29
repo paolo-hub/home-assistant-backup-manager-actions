@@ -200,6 +200,29 @@ def test_multiple_external_backups_emit_in_chronological_order() -> None:
     ]
 
 
+def test_external_events_order_by_real_instant_across_offsets() -> None:
+    """DST offsets must not invert chronological event ordering."""
+    tracker = events.BackupCreatedEventTracker()
+    assert tracker.process_complete_inventory([]) == []
+
+    earlier = backup(
+        "earlier-real-time",
+        "ha_native",
+        date="2026-10-25T02:30:00+02:00",
+    )
+    later = backup(
+        "later-real-time",
+        "ha_native",
+        date="2026-10-25T02:15:00+01:00",
+    )
+
+    emitted = tracker.process_complete_inventory([later, earlier])
+    assert [item["backup_id"] for item in emitted] == [
+        "earlier-real-time",
+        "later-real-time",
+    ]
+
+
 def test_bma_and_unknown_discovery_do_not_emit_external_events() -> None:
     """Only HA Native and App Update are discovery-driven in 1.1."""
     tracker = events.BackupCreatedEventTracker()
@@ -295,6 +318,7 @@ def main() -> None:
     test_external_new_backup_emits_once()
     test_app_update_payload_and_agent_copy_deduplication()
     test_multiple_external_backups_emit_in_chronological_order()
+    test_external_events_order_by_real_instant_across_offsets()
     test_bma_and_unknown_discovery_do_not_emit_external_events()
     test_verified_bma_create_emits_after_early_inventory_visibility()
     test_bma_visible_in_first_complete_snapshot_still_emits_after_verification()
