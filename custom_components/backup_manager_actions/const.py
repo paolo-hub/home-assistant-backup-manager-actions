@@ -7,6 +7,9 @@ NAME = "Backup Manager Actions"
 
 DATA_ADAPTER = "adapter"
 DATA_COORDINATORS = "coordinators"
+DATA_EVENT_TRACKER = "event_tracker"
+
+EVENT_BACKUP_CREATED = "backup_manager_actions_backup_created"
 
 SERVICE_CREATE = "create"
 SERVICE_DELETE = "delete"
