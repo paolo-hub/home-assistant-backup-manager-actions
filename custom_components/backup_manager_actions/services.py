@@ -157,6 +157,8 @@ def async_setup_services(
             name=(call.data.get(CONF_NAME) or "").strip() or None,
             password=call.data.get(CONF_PASSWORD) or None,
         )
+        await _async_refresh_coordinators(hass)
+
         coordinators: set[BackupManagerActionsCoordinator] = hass.data[DOMAIN].get(
             DATA_COORDINATORS,
             set(),
@@ -169,7 +171,6 @@ def async_setup_services(
             if event_data is not None:
                 hass.bus.async_fire(EVENT_BACKUP_CREATED, event_data)
 
-        await _async_refresh_coordinators(hass)
         return result if call.return_response else None
 
     async def _handle_delete(call: ServiceCall) -> ServiceResponse | None:
