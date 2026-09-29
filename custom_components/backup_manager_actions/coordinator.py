@@ -37,6 +37,7 @@ class BackupManagerActionsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
         self.adapter = adapter
         self._event_tracker = event_tracker
+        self._pending_event_data: list[dict[str, Any]] = []
         self._unsubscribers: list[Callable[[], None]] = []
 
     async def _async_update_data(self) -> dict[str, Any]:
@@ -46,11 +47,31 @@ class BackupManagerActionsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except Exception as err:
             raise UpdateFailed(str(err)) from err
 
+        self._pending_event_data = []
         if snapshot.get("inventory_complete") is True:
-            for event_data in self._event_tracker.process_complete_inventory(backups):
-                self.hass.bus.async_fire(EVENT_BACKUP_CREATED, event_data)
+            self._pending_event_data = self._event_tracker.process_complete_inventory(
+                backups
+            )
 
         return snapshot
+
+    @callback
+    def _async_refresh_finished(self) -> None:
+        """Publish pending events after coordinator data has been committed."""
+        if not self._pending_event_data:
+            return
+
+        pending = self._pending_event_data
+        self._pending_event_data = []
+        self.hass.async_create_task(self._async_fire_pending_events(pending))
+
+    async def _async_fire_pending_events(
+        self,
+        pending: list[dict[str, Any]],
+    ) -> None:
+        """Fire events in a separate task after refresh listeners can update."""
+        for event_data in pending:
+            self.hass.bus.async_fire(EVENT_BACKUP_CREATED, event_data)
 
     @callback
     def async_publish_verified_bma_create(
