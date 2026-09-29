@@ -153,7 +153,14 @@ class BackupManagerActionsAdapter:
             }
             if backup is not None:
                 stored_agent_ids = set(backup.agents)
-                if requested.issubset(stored_agent_ids) and not relevant_errors:
+                relevant_failed_agent_ids = requested.intersection(
+                    backup.failed_agent_ids
+                )
+                if (
+                    requested.issubset(stored_agent_ids)
+                    and not relevant_errors
+                    and not relevant_failed_agent_ids
+                ):
                     break
 
             if attempt < CREATE_VERIFY_ATTEMPTS - 1:
@@ -187,12 +194,20 @@ class BackupManagerActionsAdapter:
             for agent_id, error in agent_errors.items()
             if agent_id in requested
         }
+        relevant_failed_agent_ids = sorted(
+            requested.intersection(backup.failed_agent_ids)
+        )
 
-        if missing_agent_ids or relevant_errors:
+        if missing_agent_ids or relevant_errors or relevant_failed_agent_ids:
             details: list[str] = []
             if missing_agent_ids:
                 details.append(
                     "missing agent copies: " + ", ".join(missing_agent_ids)
+                )
+            if relevant_failed_agent_ids:
+                details.append(
+                    "reported failed agent copies: "
+                    + ", ".join(relevant_failed_agent_ids)
                 )
             if relevant_errors:
                 details.append(
