@@ -130,6 +130,20 @@ def test_policy_validation() -> None:
     else:
         raise AssertionError("HA Native group_by should fail")
 
+    try:
+        plan([], source_type="unknown", job_id=None)
+    except retention.RetentionPolicyError as err:
+        assert "source_type must be one of" in str(err)
+    else:
+        raise AssertionError("Unknown backups must never be a retention source")
+
+    try:
+        plan([], keep_last=1.5)
+    except retention.RetentionPolicyError as err:
+        assert "keep_last must be an integer" in str(err)
+    else:
+        raise AssertionError("Fractional retention counters must fail")
+
     app = plan(
         [],
         source_type="app_update",
@@ -204,6 +218,31 @@ def test_iso_week_buckets_across_year_boundary() -> None:
         "weekly:2026-W53"
     ]
     assert set(ids(result["delete"])) == {"w01-old", "w52"}
+
+
+def test_monthly_bucket_across_year_boundary() -> None:
+    """Previous calendar month crosses New Year without becoming a duration."""
+    now = datetime(2027, 1, 15, 12, 0, tzinfo=timezone.utc)
+    result = plan(
+        [
+            backup("jan-new", "2027-01-14T10:00:00+01:00"),
+            backup("jan-old", "2027-01-02T10:00:00+01:00"),
+            backup("dec", "2026-12-20T10:00:00+01:00"),
+            backup("nov", "2026-11-20T10:00:00+01:00"),
+        ],
+        keep_last=0,
+        monthly=2,
+        now=now,
+    )
+
+    assert set(ids(result["keep"])) == {"jan-new", "dec"}
+    assert find_item(result["keep"], "jan-new")["reasons"] == [
+        "monthly:2027-01"
+    ]
+    assert find_item(result["keep"], "dec")["reasons"] == [
+        "monthly:2026-12"
+    ]
+    assert set(ids(result["delete"])) == {"jan-old", "nov"}
 
 
 def test_monthly_and_yearly_calendar_buckets() -> None:
@@ -327,6 +366,45 @@ def test_agent_scope_and_reclaimable_size() -> None:
             "reason": "no_in_scope_copy",
         }
     ]
+
+
+def test_any_protected_copy_inside_scope_protects_logical_backup() -> None:
+    """One protected in-scope copy protects the logical backup on all scoped agents."""
+    result = plan(
+        [
+            backup(
+                "protected",
+                "2026-09-28T10:00:00+02:00",
+                agents={
+                    "local": {"protected": False, "size": 100},
+                    "cloud": {"protected": True, "size": 120},
+                },
+            ),
+            backup(
+                "keep-quota",
+                "2026-09-29T10:00:00+02:00",
+                agents={
+                    "local": {"protected": False, "size": 100},
+                    "cloud": {"protected": False, "size": 120},
+                },
+            ),
+            backup(
+                "delete",
+                "2026-09-27T10:00:00+02:00",
+                agents={
+                    "local": {"protected": False, "size": 100},
+                    "cloud": {"protected": False, "size": 120},
+                },
+            ),
+        ],
+        scope_agent_ids=("local", "cloud"),
+        keep_last=1,
+    )
+
+    assert ids(result["protected"]) == ["protected"]
+    assert result["protected"][0]["protected_agent_ids"] == ["cloud"]
+    assert ids(result["keep"]) == ["keep-quota"]
+    assert ids(result["delete"]) == ["delete"]
 
 
 def test_missing_copy_size_marks_reclaimable_incomplete() -> None:
@@ -535,10 +613,12 @@ def main() -> None:
     test_keep_last_and_equal_date_tie_break()
     test_daily_calendar_buckets_and_no_backfill()
     test_iso_week_buckets_across_year_boundary()
+    test_monthly_bucket_across_year_boundary()
     test_monthly_and_yearly_calendar_buckets()
     test_union_and_deduplicated_reasons()
     test_protected_backup_is_additional_to_quota()
     test_agent_scope_and_reclaimable_size()
+    test_any_protected_copy_inside_scope_protects_logical_backup()
     test_missing_copy_size_marks_reclaimable_incomplete()
     test_bma_job_filter_and_legacy_exclusion()
     test_ha_native_mixes_manual_and_automatic()
