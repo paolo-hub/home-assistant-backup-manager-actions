@@ -237,6 +237,8 @@ class BackupManagerActionsAdapter:
             "source_type": normalized_backup["source_type"],
             "job_id": normalized_backup["job_id"],
             "metadata_version": normalized_backup["metadata_version"],
+            "failed_agent_ids": list(backup.failed_agent_ids),
+            "with_automatic_settings": backup.with_automatic_settings,
             "requested_agent_ids": list(agent_ids),
             "stored_agent_ids": stored_agent_ids,
             "protected_by_agent": {
@@ -354,8 +356,10 @@ class BackupManagerActionsAdapter:
             "agent_errors": self._errors_to_dict(agent_errors),
         }
 
-    async def async_snapshot(self) -> dict[str, Any]:
-        """Return a normalized snapshot of Backup Manager state."""
+    async def async_snapshot_with_backups(
+        self,
+    ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+        """Return a normalized snapshot plus the full normalized inventory."""
         manager = self.manager
         backups, agent_errors = await manager.async_get_backups()
         agents = self.list_agents()
@@ -373,7 +377,7 @@ class BackupManagerActionsAdapter:
             normalized_errors,
         )
 
-        return {
+        snapshot = {
             "state": str(manager.state),
             "agent_count": len(agents),
             "agents": agents,
@@ -382,6 +386,12 @@ class BackupManagerActionsAdapter:
             "agent_errors": normalized_errors,
             **inventory_summary,
         }
+        return snapshot, normalized_backups
+
+    async def async_snapshot(self) -> dict[str, Any]:
+        """Return a normalized snapshot of Backup Manager state."""
+        snapshot, _backups = await self.async_snapshot_with_backups()
+        return snapshot
 
     @staticmethod
     def _errors_to_dict(errors: dict[str, Exception]) -> dict[str, str]:
