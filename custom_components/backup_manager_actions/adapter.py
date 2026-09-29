@@ -9,7 +9,6 @@ from uuid import uuid4
 from homeassistant.components.backup import (
     BackupManager,
     Folder,
-    ManagerBackup,
     async_get_manager,
 )
 from homeassistant.core import HomeAssistant
