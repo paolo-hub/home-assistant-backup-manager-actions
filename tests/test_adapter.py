@@ -130,12 +130,14 @@ class Manager:
         self.delete_active = 0
         self.max_delete_active = 0
         self.omit_metadata_keys: set[str] = set()
+        self.override_metadata: dict[str, object] = {}
 
     async def async_create_backup(self, **kwargs):
         backup_id = "abc12345"
         extra_metadata = dict(kwargs["extra_metadata"])
         for key in self.omit_metadata_keys:
             extra_metadata.pop(key, None)
+        extra_metadata.update(self.override_metadata)
         self.backups[backup_id] = Backup(
             addons=[Addon("core_mosquitto", "Mosquitto", "1.0")],
             backup_id=backup_id,
@@ -419,6 +421,48 @@ async def test_create_verifies_metadata_version_persistence() -> None:
         assert "metadata_version is None, expected 1" in str(err)
     else:
         raise AssertionError("Missing metadata_version should fail verification")
+
+
+async def test_create_rejects_noncanonical_metadata_version() -> None:
+    manager = Manager()
+    manager.override_metadata = {
+        "backup_manager_actions.metadata_version": "01"
+    }
+    adapter = BackupManagerActionsAdapter(Hass(manager))
+
+    try:
+        await adapter.async_create(
+            agent_ids=["local", "cloud"],
+            include_homeassistant=True,
+            include_database=True,
+            include_all_addons=False,
+            include_addons=None,
+            include_folders=None,
+            name=None,
+            password=None,
+            job_id="full",
+        )
+    except BackupManagerActionsError as err:
+        assert "stored metadata_version is '01', expected '1'" in str(err)
+    else:
+        raise AssertionError("Noncanonical persisted metadata_version must fail")
+
+
+async def test_legacy_create_rejects_unexpected_invalid_stored_job_id() -> None:
+    manager = Manager()
+    manager.override_metadata = {
+        "backup_manager_actions.job_id": "INVALID"
+    }
+    adapter = BackupManagerActionsAdapter(Hass(manager))
+
+    try:
+        await create_default_backup(adapter)
+    except BackupManagerActionsError as err:
+        assert "unexpected stored job_id 'INVALID'" in str(err)
+    else:
+        raise AssertionError(
+            "A legacy-compatible create must not accept injected job metadata"
+        )
 
 
 async def test_create_verifies_job_id_persistence() -> None:
@@ -1323,6 +1367,8 @@ async def main() -> None:
     await test_create_normalizes_job_id()
     await test_create_rejects_invalid_job_id_before_creation()
     await test_create_verifies_metadata_version_persistence()
+    await test_create_rejects_noncanonical_metadata_version()
+    await test_legacy_create_rejects_unexpected_invalid_stored_job_id()
     await test_create_verifies_job_id_persistence()
     await test_create_detects_missing_copy()
     await test_create_ignores_unrelated_agent_lookup_error()
