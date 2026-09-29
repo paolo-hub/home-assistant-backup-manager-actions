@@ -26,6 +26,7 @@ from .inventory import (
     SOURCE_APP_UPDATE,
     SOURCE_BMA,
     aggregate_inventory,
+    backup_chronology_key,
     normalize_backup,
     normalize_job_id,
 )
@@ -730,7 +731,14 @@ class BackupManagerActionsAdapter:
     async def async_list_backups(self) -> dict[str, Any]:
         """Return all logical backups known to Backup Manager."""
         backups, agent_errors = await self.manager.async_get_backups()
-        ordered = sorted(backups.values(), key=lambda item: item.date, reverse=True)
+        ordered = sorted(
+            backups.values(),
+            key=lambda item: backup_chronology_key(
+                item.date,
+                item.backup_id,
+            ),
+            reverse=True,
+        )
         return {
             "backups": [normalize_backup(backup) for backup in ordered],
             "agent_errors": self._errors_to_dict(agent_errors),
@@ -754,7 +762,10 @@ class BackupManagerActionsAdapter:
 
         ordered_backups = sorted(
             backups.values(),
-            key=lambda item: item.date,
+            key=lambda item: backup_chronology_key(
+                item.date,
+                item.backup_id,
+            ),
             reverse=True,
         )
         normalized_backups = [normalize_backup(backup) for backup in ordered_backups]
