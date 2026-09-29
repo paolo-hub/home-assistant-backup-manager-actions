@@ -490,7 +490,18 @@ def plan_retention(
     protected_result.sort(
         key=lambda item: (item["group"], item["backup_id"])
     )
-    delete_result.sort(key=lambda item: (item["date"], item["backup_id"]))
+
+    local_date_by_id = {
+        str(backup["backup_id"]): backup["_retention_local_date"]
+        for group_backups in grouped.values()
+        for backup in group_backups
+    }
+    delete_result.sort(
+        key=lambda item: (
+            local_date_by_id[item["backup_id"]],
+            item["backup_id"],
+        )
+    )
 
     reclaimable_size_bytes = sum(
         item["reclaimable_size_bytes"]
