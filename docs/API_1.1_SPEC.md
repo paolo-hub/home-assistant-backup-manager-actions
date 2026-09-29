@@ -108,8 +108,10 @@ For 1.1:
 
 ```text
 backup_manager_actions.managed = true
-backup_manager_actions.metadata_version = 1
+backup_manager_actions.metadata_version = "1"
 ```
+
+`metadata_version` is stored as a string because Home Assistant Backup Manager extra metadata values are limited to boolean or string values. Normalized BMA API output exposes a valid numeric metadata version as an integer.
 
 `correlation_id` remains a generated UUID-style opaque string used to correlate the native Backup Manager job with the final logical backup.
 
@@ -163,12 +165,15 @@ Classification must be deterministic.
 
 4. If only the BMA marker is present:
    - `source_type = bma`
-   - parse `job_id` when valid;
-   - legacy BMA backups without `job_id` remain `bma` with `job_id = null`.
+   - valid `job_id`: `classification_reason = bma_managed` and expose the normalized `job_id`;
+   - no `job_id`: `classification_reason = bma_legacy_no_job` and `job_id = null`;
+   - invalid `job_id`: `classification_reason = bma_invalid_job_id` and `job_id = null`.
+   - a valid decimal-string `metadata_version` is normalized to an integer; a missing or invalid value is exposed as `null`.
 
 5. If only the App Update marker is present:
    - if the marker contains a valid non-empty App slug:
      - `source_type = app_update`
+     - `classification_reason = app_update_metadata`
      - `app_slug = <slug>`
    - otherwise:
      - `source_type = unknown`
@@ -176,6 +181,7 @@ Classification must be deterministic.
 
 6. Otherwise:
    - `source_type = ha_native`
+   - `classification_reason = ha_native_default`
 
 `with_automatic_settings` remains exposed as native metadata but does not create another top-level source class.
 
@@ -219,7 +225,7 @@ Every BMA-created backup writes:
 ```text
 backup_manager_actions.managed = true
 backup_manager_actions.correlation_id = <generated>
-backup_manager_actions.metadata_version = 1
+backup_manager_actions.metadata_version = "1"
 ```
 
 If `job_id` is supplied:
@@ -859,9 +865,11 @@ The internal normalized snapshot and the optional response of `backup_manager_ac
 - agent errors;
 - total backup count;
 - latest normalized backup;
-- source counts;
-- job/App breakdowns;
-- archive-size aggregates.
+- `source_counts` keyed by `bma`, `ha_native`, `app_update`, and `unknown`;
+- `bma_by_job` with an `unassigned` bucket;
+- `app_update_by_app`;
+- `ha_native_breakdown` with `automatic` and `manual_or_other`;
+- `archive_size` with physical/logical totals, completeness flags, per-agent breakdown, and per-source breakdown.
 
 A snapshot with scoped agent errors must preserve those errors explicitly and must not silently fabricate complete counts or sizes.
 
