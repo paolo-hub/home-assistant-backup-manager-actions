@@ -119,6 +119,9 @@ class Manager:
         self.lookup_errors: dict[str, Exception] = {}
         self.delete_errors: dict[str, Exception] = {}
         self.sticky_delete_agents: set[str] = set()
+        self.sticky_delete_backup_ids: set[str] = set()
+        self.protect_on_lookup_backup_ids: set[str] = set()
+        self.late_copy_on_lookup: dict[str, str] = {}
         self.omit_metadata_keys: set[str] = set()
 
     async def async_create_backup(self, **kwargs):
@@ -145,7 +148,17 @@ class Manager:
         return NewBackup("f6815a2f443f442bb89193410e2bb41f")
 
     async def async_get_backup(self, backup_id):
-        return self.backups.get(backup_id), dict(self.lookup_errors)
+        backup = self.backups.get(backup_id)
+        if backup is not None and backup_id in self.protect_on_lookup_backup_ids:
+            if "local" in backup.agents:
+                backup.agents["local"].protected = True
+        if backup is not None and backup_id in self.late_copy_on_lookup:
+            agent_id = self.late_copy_on_lookup[backup_id]
+            backup.agents.setdefault(
+                agent_id,
+                Status(protected=False, size=150),
+            )
+        return backup, dict(self.lookup_errors)
 
     async def async_get_backups(self):
         return self.backups, dict(self.lookup_errors)
@@ -156,7 +169,10 @@ class Manager:
             return {}
 
         targets = set(backup.agents) if agent_ids is None else set(agent_ids)
-        for agent_id in targets - self.sticky_delete_agents:
+        sticky_agents = set(self.sticky_delete_agents)
+        if backup_id in self.sticky_delete_backup_ids:
+            sticky_agents.update(targets)
+        for agent_id in targets - sticky_agents:
             backup.agents.pop(agent_id, None)
 
         if not backup.agents:
@@ -739,7 +755,268 @@ async def test_plan_retention_rejects_missing_agent() -> None:
         raise AssertionError("Unknown retention agent should fail")
 
 
+async def test_apply_retention_recalculates_current_state() -> None:
+    manager = Manager()
+    add_bma_backup(
+        manager,
+        "new-before-dry-run",
+        "2026-09-29T10:00:00+02:00",
+    )
+    add_bma_backup(
+        manager,
+        "old",
+        "2026-09-27T10:00:00+02:00",
+    )
+    adapter = BackupManagerActionsAdapter(Hass(manager))
+    now = adapter_module.datetime(
+        2026,
+        9,
+        29,
+        12,
+        0,
+        tzinfo=adapter_module.timezone.utc,
+    )
+
+    dry_run = await adapter.async_plan_retention(
+        source_type="bma",
+        job_id="full",
+        group_by=None,
+        agent_ids=["local"],
+        keep_last=1,
+        daily=0,
+        weekly=0,
+        monthly=0,
+        yearly=0,
+        now=now,
+    )
+    assert [item["backup_id"] for item in dry_run["delete"]] == ["old"]
+
+    # State changes after the dry-run. Apply must not execute that stale plan.
+    add_bma_backup(
+        manager,
+        "new-after-dry-run",
+        "2026-09-29T11:00:00+02:00",
+    )
+
+    applied = await adapter.async_apply_retention(
+        source_type="bma",
+        job_id="full",
+        group_by=None,
+        agent_ids=["local"],
+        keep_last=1,
+        daily=0,
+        weekly=0,
+        monthly=0,
+        yearly=0,
+        now=now,
+    )
+
+    assert [item["backup_id"] for item in applied["plan"]["keep"]] == [
+        "new-after-dry-run"
+    ]
+    assert [item["backup_id"] for item in applied["plan"]["delete"]] == [
+        "old",
+        "new-before-dry-run",
+    ]
+    assert applied["execution"]["deleted_count"] == 2
+    assert set(manager.backups) == {"new-after-dry-run"}
+
+
+async def test_apply_retention_preserves_out_of_scope_copies() -> None:
+    manager = Manager()
+    add_bma_backup(
+        manager,
+        "keep",
+        "2026-09-29T10:00:00+02:00",
+        agents={"local": Status(protected=False, size=100)},
+    )
+    add_bma_backup(
+        manager,
+        "expire",
+        "2026-09-28T10:00:00+02:00",
+        agents={
+            "local": Status(protected=False, size=100),
+            "cloud": Status(protected=False, size=120),
+        },
+    )
+    adapter = BackupManagerActionsAdapter(Hass(manager))
+
+    result = await adapter.async_apply_retention(
+        source_type="bma",
+        job_id="full",
+        group_by=None,
+        agent_ids=["local"],
+        keep_last=1,
+        daily=0,
+        weekly=0,
+        monthly=0,
+        yearly=0,
+        now=adapter_module.datetime(
+            2026,
+            9,
+            29,
+            12,
+            0,
+            tzinfo=adapter_module.timezone.utc,
+        ),
+    )
+
+    assert result["execution"]["deleted_count"] == 1
+    assert set(manager.backups["expire"].agents) == {"cloud"}
+    deleted = result["execution"]["deleted"][0]
+    assert deleted["target_agent_ids"] == ["local"]
+    assert deleted["remaining_agent_ids"] == ["cloud"]
+
+
+async def test_apply_retention_rechecks_protection_before_delete() -> None:
+    manager = Manager()
+    add_bma_backup(
+        manager,
+        "keep",
+        "2026-09-29T10:00:00+02:00",
+    )
+    add_bma_backup(
+        manager,
+        "expire",
+        "2026-09-28T10:00:00+02:00",
+    )
+    manager.protect_on_lookup_backup_ids = {"expire"}
+    adapter = BackupManagerActionsAdapter(Hass(manager))
+
+    try:
+        await adapter.async_apply_retention(
+            source_type="bma",
+            job_id="full",
+            group_by=None,
+            agent_ids=["local"],
+            keep_last=1,
+            daily=0,
+            weekly=0,
+            monthly=0,
+            yearly=0,
+            now=adapter_module.datetime(
+                2026,
+                9,
+                29,
+                12,
+                0,
+                tzinfo=adapter_module.timezone.utc,
+            ),
+        )
+    except BackupManagerActionsError as err:
+        assert "became protected on: local" in str(err)
+    else:
+        raise AssertionError("Late protection must block deletion")
+
+    assert "expire" in manager.backups
+    assert manager.backups["expire"].agents["local"].protected is True
+
+
+async def test_apply_retention_deletes_late_in_scope_copy() -> None:
+    manager = Manager()
+    add_bma_backup(
+        manager,
+        "keep",
+        "2026-09-29T10:00:00+02:00",
+        agents={
+            "local": Status(protected=False, size=100),
+            "cloud": Status(protected=False, size=120),
+        },
+    )
+    add_bma_backup(
+        manager,
+        "expire",
+        "2026-09-28T10:00:00+02:00",
+        agents={"local": Status(protected=False, size=100)},
+    )
+    manager.late_copy_on_lookup = {"expire": "cloud"}
+    adapter = BackupManagerActionsAdapter(Hass(manager))
+
+    result = await adapter.async_apply_retention(
+        source_type="bma",
+        job_id="full",
+        group_by=None,
+        agent_ids=["local", "cloud"],
+        keep_last=1,
+        daily=0,
+        weekly=0,
+        monthly=0,
+        yearly=0,
+        now=adapter_module.datetime(
+            2026,
+            9,
+            29,
+            12,
+            0,
+            tzinfo=adapter_module.timezone.utc,
+        ),
+    )
+
+    assert "expire" not in manager.backups
+    assert result["execution"]["deleted"][0]["target_agent_ids"] == [
+        "cloud",
+        "local",
+    ]
+
+
+async def test_apply_retention_failure_reports_prior_deletions() -> None:
+    manager = Manager()
+    add_bma_backup(
+        manager,
+        "keep",
+        "2026-09-29T10:00:00+02:00",
+    )
+    add_bma_backup(
+        manager,
+        "oldest",
+        "2026-09-26T10:00:00+02:00",
+    )
+    add_bma_backup(
+        manager,
+        "fails-second",
+        "2026-09-27T10:00:00+02:00",
+    )
+    manager.sticky_delete_backup_ids = {"fails-second"}
+    adapter = BackupManagerActionsAdapter(Hass(manager))
+
+    try:
+        await adapter.async_apply_retention(
+            source_type="bma",
+            job_id="full",
+            group_by=None,
+            agent_ids=["local"],
+            keep_last=1,
+            daily=0,
+            weekly=0,
+            monthly=0,
+            yearly=0,
+            now=adapter_module.datetime(
+                2026,
+                9,
+                29,
+                12,
+                0,
+                tzinfo=adapter_module.timezone.utc,
+            ),
+        )
+    except BackupManagerActionsError as err:
+        message = str(err)
+        assert "Retention apply failed at backup fails-second" in message
+        assert "deleted before failure: oldest" in message
+    else:
+        raise AssertionError("Verification failure should abort apply")
+
+    assert "oldest" not in manager.backups
+    assert "fails-second" in manager.backups
+    assert "keep" in manager.backups
+
+
 async def main() -> None:
+    await test_apply_retention_recalculates_current_state()
+    await test_apply_retention_preserves_out_of_scope_copies()
+    await test_apply_retention_rechecks_protection_before_delete()
+    await test_apply_retention_deletes_late_in_scope_copy()
+    await test_apply_retention_failure_reports_prior_deletions()
     await test_plan_retention_is_read_only()
     await test_plan_retention_explicit_scope_ignores_unrelated_agent_error()
     await test_plan_retention_omitted_scope_fails_on_any_agent_error()
