@@ -32,6 +32,7 @@ from .const import (
     CONF_PASSWORD,
     DATA_COORDINATORS,
     DOMAIN,
+    EVENT_BACKUP_CREATED,
     SERVICE_CREATE,
     SERVICE_DELETE,
     SERVICE_GET_BACKUP,
@@ -166,8 +167,6 @@ def async_setup_services(
         else:
             event_data = event_tracker.record_verified_bma_create(result)
             if event_data is not None:
-                from .const import EVENT_BACKUP_CREATED
-
                 hass.bus.async_fire(EVENT_BACKUP_CREATED, event_data)
 
         await _async_refresh_coordinators(hass)
