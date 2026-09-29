@@ -47,5 +47,7 @@ jobs:
         run: python tests/test_events.py
       - name: Run coordinator event simulation
         run: python tests/test_coordinator.py
+      - name: Run sensor simulation
+        run: python tests/test_sensor.py
       - name: Run adapter simulation
         run: python tests/test_adapter.py
