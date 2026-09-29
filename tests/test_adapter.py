@@ -116,6 +116,7 @@ class Manager:
         }
         self.backups: dict[str, Backup] = {}
         self.create_agents = ["local", "cloud"]
+        self.create_failed_agent_ids: list[str] = []
         self.lookup_errors: dict[str, Exception] = {}
         self.delete_errors: dict[str, Exception] = {}
         self.sticky_delete_agents: set[str] = set()
@@ -139,7 +140,7 @@ class Manager:
             database_included=kwargs["include_database"],
             extra_metadata=extra_metadata,
             failed_addons=[],
-            failed_agent_ids=[],
+            failed_agent_ids=list(self.create_failed_agent_ids),
             failed_folders=[],
             folders=kwargs["include_folders"] or [],
             homeassistant_included=kwargs["include_homeassistant"],
@@ -459,6 +460,23 @@ async def test_create_ignores_unrelated_agent_lookup_error() -> None:
         password=None,
     )
     assert result["stored_agent_ids"] == ["cloud", "local"]
+
+
+async def test_create_rejects_reported_requested_agent_failure() -> None:
+    manager = Manager()
+    manager.create_failed_agent_ids = ["cloud"]
+    adapter = BackupManagerActionsAdapter(Hass(manager))
+
+    try:
+        await create_default_backup(adapter)
+    except BackupManagerActionsError as err:
+        message = str(err)
+        assert "reported failed agent copies" in message
+        assert "cloud" in message
+    else:
+        raise AssertionError(
+            "A requested agent reported as failed must block create verification"
+        )
 
 
 async def test_create_rejects_requested_agent_lookup_error() -> None:
@@ -1110,6 +1128,7 @@ async def main() -> None:
     await test_create_verifies_job_id_persistence()
     await test_create_detects_missing_copy()
     await test_create_ignores_unrelated_agent_lookup_error()
+    await test_create_rejects_reported_requested_agent_failure()
     await test_create_rejects_requested_agent_lookup_error()
     await test_create_rejects_unavailable_requested_agent()
     await test_delete_missing_backup_is_idempotent()
