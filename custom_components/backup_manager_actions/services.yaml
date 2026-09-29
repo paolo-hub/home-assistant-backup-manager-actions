@@ -74,3 +74,131 @@ get_backup:
       required: true
       selector:
         text:
+
+plan_retention:
+  fields:
+    source_type:
+      required: true
+      selector:
+        select:
+          options:
+            - label: BMA
+              value: bma
+            - label: HA Native
+              value: ha_native
+            - label: App Update
+              value: app_update
+    job_id:
+      selector:
+        text:
+    group_by:
+      selector:
+        select:
+          options:
+            - label: Per App
+              value: app
+            - label: All Apps
+              value: all
+    agent_ids:
+      selector:
+        text:
+          multiple: true
+    keep_last:
+      default: 0
+      selector:
+        number:
+          min: 0
+          step: 1
+          mode: box
+    daily:
+      default: 0
+      selector:
+        number:
+          min: 0
+          step: 1
+          mode: box
+    weekly:
+      default: 0
+      selector:
+        number:
+          min: 0
+          step: 1
+          mode: box
+    monthly:
+      default: 0
+      selector:
+        number:
+          min: 0
+          step: 1
+          mode: box
+    yearly:
+      default: 0
+      selector:
+        number:
+          min: 0
+          step: 1
+          mode: box
+
+apply_retention:
+  fields:
+    source_type:
+      required: true
+      selector:
+        select:
+          options:
+            - label: BMA
+              value: bma
+            - label: HA Native
+              value: ha_native
+            - label: App Update
+              value: app_update
+    job_id:
+      selector:
+        text:
+    group_by:
+      selector:
+        select:
+          options:
+            - label: Per App
+              value: app
+            - label: All Apps
+              value: all
+    agent_ids:
+      selector:
+        text:
+          multiple: true
+    keep_last:
+      default: 0
+      selector:
+        number:
+          min: 0
+          step: 1
+          mode: box
+    daily:
+      default: 0
+      selector:
+        number:
+          min: 0
+          step: 1
+          mode: box
+    weekly:
+      default: 0
+      selector:
+        number:
+          min: 0
+          step: 1
+          mode: box
+    monthly:
+      default: 0
+      selector:
+        number:
+          min: 0
+          step: 1
+          mode: box
+    yearly:
+      default: 0
+      selector:
+        number:
+          min: 0
+          step: 1
+          mode: box
