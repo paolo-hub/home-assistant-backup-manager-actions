@@ -1956,7 +1956,77 @@ async def test_apply_preserves_progress_on_native_manager_error() -> None:
     assert "expire" in manager.backups
 
 
+async def test_create_returns_verified_content_not_request_echo() -> None:
+    """Read every new field from the correlated inventory, after native create."""
+    manager = Manager()
+    original = manager.async_get_backups
+
+    async def verified_inventory():
+        backups, errors = await original()
+        backup = backups["abc12345"]
+        backup.homeassistant_included = False
+        backup.database_included = False
+        backup.addons = [Addon("verified_app", "Verified app", "2.0")]
+        backup.folders = [Folder.MEDIA]
+        return backups, errors
+
+    manager.async_get_backups = verified_inventory
+    adapter = BackupManagerActionsAdapter(Hass(manager))
+    result = await adapter.async_create(
+        agent_ids=["local", "cloud"], include_homeassistant=True,
+        include_database=True, include_all_addons=True, include_addons=None,
+        include_folders=["share"], name=None, password=None,
+    )
+    assert result["homeassistant_included"] is False
+    assert result["database_included"] is False
+    assert result["addons"] == [{"slug": "verified_app", "name": "Verified app", "version": "2.0"}]
+    assert result["folders"] == ["media"]
+    assert result["failed_addons"] == result["failed_folders"] == []
+    assert result["backup_id"] == "abc12345"
+    assert result["stored_agent_ids"] == ["cloud", "local"]
+
+
+async def test_create_reports_native_ssl_without_changing_native_request() -> None:
+    """Model the Supervisor SSL rule; BMA must only report its verified result."""
+    for include_ha, folders, expected in (
+        (True, None, ["ssl"]),
+        (True, [], ["ssl"]),
+        (True, ["share"], ["share", "ssl"]),
+        (False, ["share"], ["share"]),
+        (False, ["ssl"], ["ssl"]),
+    ):
+        manager = Manager()
+        original = manager.async_create_backup
+        requests = []
+
+        async def native_create(**kwargs):
+            requests.append(kwargs)
+            result = await original(**kwargs)
+            backup = manager.backups["abc12345"]
+            backup.folders = list(backup.folders)
+            if kwargs["include_homeassistant"] and Folder.SSL not in backup.folders:
+                backup.folders.append(Folder.SSL)
+            return result
+
+        manager.async_create_backup = native_create
+        result = await BackupManagerActionsAdapter(Hass(manager)).async_create(
+            agent_ids=["local", "cloud"], include_homeassistant=include_ha,
+            include_database=False, include_all_addons=False, include_addons=None,
+            include_folders=folders, name=None, password=None,
+        )
+        assert result["folders"] == expected
+        assert result["homeassistant_included"] is include_ha
+        assert result["database_included"] is False
+        assert requests[0]["include_homeassistant"] is include_ha
+        # The stub copies the folders before applying the native SSL rule.
+        assert requests[0]["include_folders"] == (
+            None if folders is None else [Folder(folder) for folder in folders]
+        )
+
+
 async def main() -> None:
+    await test_create_returns_verified_content_not_request_echo()
+    await test_create_reports_native_ssl_without_changing_native_request()
     await test_apply_preserves_progress_on_native_manager_error()
     await test_retention_final_read_rechecks_metadata()
     await test_retention_agent_removed_during_listing_fails_closed()

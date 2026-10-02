@@ -23,7 +23,7 @@ capabilities needed for advanced backup workflows.
 ## Release status
 
 - **Stable:** `1.0.1`
-- **Beta:** `1.1.0b1`
+- **Beta:** `1.1.0b2`
 - **Beta branch:** `feature/bma-1.1`
 - **Target final release:** `1.1.0`
 - **Minimum Home Assistant:** `2026.9.0`
@@ -139,6 +139,17 @@ response_variable: backup_result
 The result includes the final logical `backup_id`, native backup job ID,
 requested and stored agents, BMA classification, `job_id`, metadata version,
 per-agent sizes, and native encryption flags.
+
+Since beta2, it also reports the verified archive contents:
+`homeassistant_included`, `database_included`, `addons` (objects with `slug`,
+`name`, `version`), and `folders`. These come from the completed backup inventory,
+not from the request. `failed_addons` and `failed_folders` are empty on success;
+content failures still raise an error.
+
+On Home Assistant OS/Supervised, including Home Assistant also includes `ssl`
+automatically, even with `include_folders: []`. The **Additional folders** selector
+adds other folders. SSL remains selectable for a folders-only backup with
+`include_homeassistant: false`. BMA preserves this native behavior.
 
 The create action succeeds only after the requested copies and BMA metadata have
 been verified. If Home Assistant reports failed App or folder content, BMA
@@ -317,6 +328,10 @@ Typical payload fields include:
 
 Existing 1.0.x entity identities are preserved.
 
+All eight entities share one **Backup Manager Actions** service device. Existing
+unique IDs and registered entity IDs (including user-renamed IDs) are preserved
+on upgrade; no dashboard, automation, or history migration is needed.
+
 BMA exposes:
 
 - **Backup agents** — registered Backup Agent count with IDs, names, domains,
@@ -372,8 +387,8 @@ There are no BMA credentials or provider settings to configure.
 
 ### Installing the beta
 
-The stable channel remains 1.0.1. To test `1.1.0b1`, enable prerelease/beta
-versions for this repository in HACS and select the 1.1.0b1 prerelease after it
+The stable channel remains 1.0.1. To test `1.1.0b2`, enable prerelease/beta
+versions for this repository in HACS and select the 1.1.0b2 prerelease after it
 has been published on GitHub.
 
 After updating the Python integration, restart Home Assistant before running the
@@ -409,10 +424,18 @@ tests covering:
 Repository validation also covers Python compilation, hassfest, and HACS
 validation.
 
-The beta is **not considered final 1.1 validation** until controlled real E2E
-testing passes with Local, SMB, Google Drive, and combined multi-agent operation,
-including metadata persistence, events, diagnostics, retention planning, and
-safe test deletion.
+Beta1 completed real E2E on Home Assistant 2026.9.4 with Local, SMB, Google Drive,
+and combined multi-agent operation on 2026-10-02. This covered creation,
+metadata, events/discovery/deduplication/startup baseline, diagnostics, GFS plans,
+scoped retention deletion, idempotence, and deletion of an encrypted backup.
+Provider failure was not induced on the live system; simulated coverage remains.
+
+### Beta 1.1.0b2
+
+Only device grouping, action descriptions, and additional verified create response
+fields changed. All 112 beta1 tests plus six beta2 tests pass (118 total).
+Device registration/reload coverage is a boundary simulation; the real upgrade
+and UI still require the short [beta2 E2E checklist](docs/BETA2_VALIDATION.md).
 
 S3-Compatible remains a separate provider issue while native Home Assistant S3
 backup creation itself is not reliable in the test environment; it does not

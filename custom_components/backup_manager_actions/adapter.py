@@ -293,6 +293,12 @@ class BackupManagerActionsAdapter:
             "source_type": normalized_backup["source_type"],
             "job_id": normalized_backup["job_id"],
             "metadata_version": normalized_backup["metadata_version"],
+            "homeassistant_included": normalized_backup["homeassistant_included"],
+            "database_included": normalized_backup["database_included"],
+            "addons": normalized_backup["addons"],
+            "folders": normalized_backup["folders"],
+            "failed_addons": normalized_backup["failed_addons"],
+            "failed_folders": normalized_backup["failed_folders"],
             "failed_agent_ids": list(backup.failed_agent_ids),
             "with_automatic_settings": backup.with_automatic_settings,
             "requested_agent_ids": list(agent_ids),
@@ -857,4 +863,3 @@ class BackupManagerActionsAdapter:
     def _errors_to_dict(errors: dict[str, Exception]) -> dict[str, str]:
         """Convert per-agent errors to JSON-friendly strings."""
         return {agent_id: str(error) for agent_id, error in errors.items()}
-

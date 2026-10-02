@@ -147,6 +147,16 @@ Every normalized backup returned by inventory APIs must include:
 - `app_slug`
 - `metadata_version`
 
+Since `1.1.0b2`, create also returns `homeassistant_included`,
+`database_included`, `addons`, `folders`, `failed_addons`, and `failed_folders`
+from the correlated, verified normalized backup. Add-on entries use the same
+`{slug, name, version}` objects as `get_backup`; folders are strings. Successful
+responses have empty failure lists; content failures still raise an error.
+These fields describe stored contents, not an echo of input parameters.
+On OS/Supervised, HA implicitly includes SSL when Home Assistant is included;
+the UI describes `include_folders` as additional folders without changing native
+input semantics. SSL remains explicitly selectable without Home Assistant.
+
 Fields not applicable to a backup are `null`.
 
 ### 5.2 Classification rules
@@ -252,6 +262,12 @@ date: "..."
 source_type: bma
 job_id: full
 metadata_version: 1
+homeassistant_included: true
+database_included: true
+addons: []
+folders: [ssl]
+failed_addons: []
+failed_folders: []
 failed_agent_ids: []
 with_automatic_settings: false
 requested_agent_ids:
@@ -768,6 +784,12 @@ Event deduplication is by logical `backup_id` for the lifetime of the loaded int
 ## 15. Diagnostic entities
 
 Existing entities and unique IDs remain unchanged.
+
+Since beta2, all eight entities provide the same service `DeviceInfo`, identified
+by `(DOMAIN, config_entry.entry_id)`, named `Backup Manager Actions`, and typed
+`DeviceEntryType.SERVICE`. HA automatically registers and associates this device
+when loading the entities. Existing registry identities are reused; no entity
+renaming or manual registry migration is performed.
 
 ### 15.1 Existing entities
 

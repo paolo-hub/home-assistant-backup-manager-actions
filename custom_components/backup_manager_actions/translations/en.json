@@ -52,7 +52,7 @@
         },
         "include_homeassistant": {
           "name": "Include Home Assistant",
-          "description": "Include the Home Assistant configuration in the backup."
+          "description": "Include the Home Assistant configuration in the backup. SSL is automatically included when Home Assistant is included."
         },
         "include_database": {
           "name": "Include database",
@@ -67,8 +67,8 @@
           "description": "Optional list of add-on slugs to include."
         },
         "include_folders": {
-          "name": "Folders",
-          "description": "Optional Home Assistant folders to include."
+          "name": "Additional folders",
+          "description": "SSL is automatically included when Home Assistant is included, even if no additional folders are selected. Select SSL here to back it up when Home Assistant is not included."
         },
         "job_id": {
           "name": "Job ID",

@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.1.0b2 — 2026-10-02
+
+Focused refinements on the E2E-validated, immutable beta1 baseline.
+
+- Group all eight existing entities under one Backup Manager Actions service
+  device using native `DeviceInfo`; preserve unique IDs and existing entity IDs.
+- Clarify Additional folders / Cartelle aggiuntive in English and Italian: SSL
+  is implicitly included with Home Assistant, and remains selectable separately.
+  The native action UI has no conditional cross-field auto-selection API.
+- Add verified `homeassistant_included`, `database_included`, `addons`, `folders`,
+  `failed_addons`, and `failed_folders` to create responses, using the same
+  normalized stored backup already used for metadata verification.
+- Preserve native create inputs and all existing verification/error behavior.
+- Run all 112 beta1 behavioral tests and six new beta2 tests: 118 pass.
+  See `docs/BETA2_VALIDATION.md` for scope, sources, and the reduced live checklist.
+
+Beta2 requires its own focused Home Assistant E2E before promotion. Stable 1.0.1
+and beta1 remain unchanged; the 1.1 pull request remains Draft.
+
 ## 1.1.0b1 — 2026-09-30
 
 First public beta of the 1.1 line. This build is intended for controlled end-to-end

@@ -8,6 +8,8 @@ from pathlib import Path
 import sys
 import types
 
+from device_registry_stub import install
+
 ROOT = Path(__file__).parents[1]
 MODULE = ROOT / "custom_components" / "backup_manager_actions" / "sensor.py"
 
@@ -119,6 +121,7 @@ sys.modules["homeassistant.core"] = core_module
 sys.modules.setdefault("homeassistant.helpers", helpers_module)
 sys.modules["homeassistant.helpers.entity_platform"] = entity_platform_module
 sys.modules["homeassistant.helpers.update_coordinator"] = update_module
+install()
 
 spec = importlib.util.spec_from_file_location(
     "custom_components.backup_manager_actions.sensor",

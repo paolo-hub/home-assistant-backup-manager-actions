@@ -12,9 +12,11 @@ from homeassistant.components.sensor import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfInformation
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from .const import DOMAIN, NAME
 from .coordinator import BackupManagerActionsCoordinator
 from .inventory import SOURCE_APP_UPDATE, SOURCE_BMA, SOURCE_HA_NATIVE
 
@@ -55,6 +57,11 @@ class BackupManagerActionsSensor(
         """Initialize the sensor."""
         super().__init__(coordinator)
         self._entry_id = entry.entry_id
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, entry.entry_id)},
+            name=NAME,
+            entry_type=DeviceEntryType.SERVICE,
+        )
 
     def _inventory_complete(self) -> bool | None:
         """Return inventory completeness when coordinator data is available."""
