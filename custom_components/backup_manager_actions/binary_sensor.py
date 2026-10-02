@@ -7,9 +7,11 @@ from typing import Any
 from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from .const import DOMAIN, NAME
 from .coordinator import BackupManagerActionsCoordinator
 
 
@@ -41,6 +43,11 @@ class BackupAgentsHealthyBinarySensor(
         """Initialize the binary sensor."""
         super().__init__(coordinator)
         self._attr_unique_id = f"{entry.entry_id}_backup_agents_healthy"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, entry.entry_id)},
+            name=NAME,
+            entry_type=DeviceEntryType.SERVICE,
+        )
 
     @property
     def is_on(self) -> bool | None:
