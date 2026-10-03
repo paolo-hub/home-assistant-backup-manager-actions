@@ -20,18 +20,16 @@ still performs backup creation, storage, encryption, restore, and provider
 handling. BMA sits above that native layer and adds the control and inspection
 capabilities needed for advanced backup workflows.
 
-## Release status
+## Version and compatibility
 
-- **Published stable:** `1.0.1`
-- **Stable candidate:** `1.1.0` on `feature/bma-1.1` (not yet released)
-- **Validated prerelease:** `1.1.0b2`
+- **Current version:** `1.1.0`
 - **Minimum Home Assistant:** `2026.9.0`
 
-Beta1 passed extended live E2E and beta2 passed its focused live E2E on Home
-Assistant 2026.9.4. The stable candidate preserves beta2's functional code and
-adds documentation, five UI translations, versioning, and localization checks.
-Final review, merge, tag, and stable publication remain manual release steps;
-`1.1.0` is not yet available as a stable release.
+BMA 1.1 completed the planned real-world validation on Home Assistant 2026.9.4.
+The validated scope includes multi-agent backup creation, normalized inventory
+and classification, backup events and restart deduplication, calendar-based GFS
+retention, scoped deletion, device/entity migration, and verified backup-content
+reporting.
 
 ## What BMA 1.1 adds
 
@@ -389,13 +387,11 @@ There are no BMA credentials or provider settings to configure.
 
 ### Release channels and upgrade
 
-The stable channel remains `1.0.1` until `1.1.0` is published. The validated
-`1.1.0b2` is already available through HACS prerelease versions. A manifest
-version on the development branch does not publish a stable release.
+HACS should normally follow the latest stable GitHub release. Prerelease builds
+may also be available when prerelease versions are explicitly selected.
 
 After a release update, restart Home Assistant. Existing registered entity IDs
-are preserved. No repeat of the completed destructive beta E2E is required for
-this candidate's documentation/localization-only changes.
+are preserved.
 
 ### Languages
 
@@ -449,14 +445,14 @@ entity IDs through upgrade and two restarts, folder UI, verified create/readback
 contents, native SSL cases, and single success events all passed. Disposable
 Local-only backups were cleaned up. See the [beta2 validation record](docs/BETA2_VALIDATION.md).
 
-### Stable candidate 1.1.0
+### Stable 1.1.0
 
 Functional code is unchanged from the validated beta2. The full 118-test
 behavioral suite remains the regression baseline. Six additional localization
 checks cover all seven locales, structure, nonempty strings, placeholders,
-technical terms, and shared retention wording. CI runs these with compilation,
-hassfest, and HACS validation. Candidate acceptance requires a green run on the
-exact candidate commit before manual merge and publication.
+technical terms, and shared retention wording. The final 1.1.0 preparation
+passed the complete 124-test suite together with compilation, hassfest, and HACS
+validation.
 
 S3-Compatible remains a separate provider issue while native Home Assistant S3
 backup creation itself is not reliable in the test environment; it does not
