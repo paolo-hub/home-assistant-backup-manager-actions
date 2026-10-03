@@ -22,15 +22,16 @@ capabilities needed for advanced backup workflows.
 
 ## Release status
 
-- **Stable:** `1.0.1`
-- **Beta:** `1.1.0b2`
-- **Beta branch:** `feature/bma-1.1`
-- **Target final release:** `1.1.0`
+- **Published stable:** `1.0.1`
+- **Stable candidate:** `1.1.0` on `feature/bma-1.1` (not yet released)
+- **Validated prerelease:** `1.1.0b2`
 - **Minimum Home Assistant:** `2026.9.0`
 
-The 1.1 beta is intended for controlled end-to-end validation before promotion
-to the final 1.1.0 release. Until that validation passes, 1.0.1 remains the
-stable production release.
+Beta1 passed extended live E2E and beta2 passed its focused live E2E on Home
+Assistant 2026.9.4. The stable candidate preserves beta2's functional code and
+adds documentation, five UI translations, versioning, and localization checks.
+Final review, merge, tag, and stable publication remain manual release steps;
+`1.1.0` is not yet available as a stable release.
 
 ## What BMA 1.1 adds
 
@@ -71,7 +72,7 @@ The integration owns:
 - retention planning and verified execution;
 - diagnostic entities and structured action responses.
 
-The companion Home Assistant package owns:
+The separately planned companion Home Assistant package will own:
 
 - Full and Partial schedules;
 - manual job controls;
@@ -82,8 +83,9 @@ The companion Home Assistant package owns:
 - helper state;
 - dashboard/UI configuration.
 
-This separation keeps BMA reusable while allowing the Home Assistant package to
-define site-specific behavior.
+The companion package is not shipped by this integration. This separation keeps
+BMA reusable while allowing a separate package or user automations to define
+site-specific behavior.
 
 ## Backup classification
 
@@ -96,9 +98,9 @@ Every logical backup returned by the normalized inventory has a `source_type`:
 | `app_update` | Backup created for an App update and identified by Supervisor metadata |
 | `unknown` | Conflicting or malformed source metadata |
 
-BMA backups may additionally expose a `job_id`. The companion package initially
-uses `full` and `partial`, but BMA itself does not assign semantics to those
-names.
+BMA backups may additionally expose a `job_id`. The planned companion package
+uses `full` and `partial` as job identifiers; BMA itself does not assign semantics
+to those names.
 
 `unknown` backups remain visible in inventory but are never automatically
 selected by retention.
@@ -385,14 +387,22 @@ Until this repository is included in the default HACS catalog:
 
 There are no BMA credentials or provider settings to configure.
 
-### Installing the beta
+### Release channels and upgrade
 
-The stable channel remains 1.0.1. To test `1.1.0b2`, enable prerelease/beta
-versions for this repository in HACS and select the 1.1.0b2 prerelease after it
-has been published on GitHub.
+The stable channel remains `1.0.1` until `1.1.0` is published. The validated
+`1.1.0b2` is already available through HACS prerelease versions. A manifest
+version on the development branch does not publish a stable release.
 
-After updating the Python integration, restart Home Assistant before running the
-E2E checks.
+After a release update, restart Home Assistant. Existing registered entity IDs
+are preserved. No repeat of the completed destructive beta E2E is required for
+this candidate's documentation/localization-only changes.
+
+### Languages
+
+The integration includes English, Italian, German, French, Spanish, Dutch, and
+Brazilian Portuguese (`pt-BR`). Translations cover configuration, entity names,
+and action labels/help. Technical API keys and stored entity identities are
+unchanged.
 
 ## Validation
 
@@ -434,8 +444,19 @@ Provider failure was not induced on the live system; simulated coverage remains.
 
 Only device grouping, action descriptions, and additional verified create response
 fields changed. All 112 beta1 tests plus six beta2 tests pass (118 total).
-Device registration/reload coverage is a boundary simulation; the real upgrade
-and UI still require the short [beta2 E2E checklist](docs/BETA2_VALIDATION.md).
+The focused live E2E completed on 2026-10-03: one device/eight entities, preserved
+entity IDs through upgrade and two restarts, folder UI, verified create/readback
+contents, native SSL cases, and single success events all passed. Disposable
+Local-only backups were cleaned up. See the [beta2 validation record](docs/BETA2_VALIDATION.md).
+
+### Stable candidate 1.1.0
+
+Functional code is unchanged from the validated beta2. The full 118-test
+behavioral suite remains the regression baseline. Six additional localization
+checks cover all seven locales, structure, nonempty strings, placeholders,
+technical terms, and shared retention wording. CI runs these with compilation,
+hassfest, and HACS validation. Candidate acceptance requires a green run on the
+exact candidate commit before manual merge and publication.
 
 S3-Compatible remains a separate provider issue while native Home Assistant S3
 backup creation itself is not reliable in the test environment; it does not

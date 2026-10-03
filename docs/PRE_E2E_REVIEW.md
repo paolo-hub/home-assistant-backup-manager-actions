@@ -1,5 +1,10 @@
 # BMA 1.1 independent pre-E2E review — 2026-09-29
 
+Historical review at the pre-beta baseline. Subsequent extended beta1 E2E passed
+on 2026-10-02 and focused beta2 E2E passed on 2026-10-03. See
+[BETA2_VALIDATION.md](BETA2_VALIDATION.md) and the README for current acceptance
+status. Provider failure was not induced live; simulated coverage remains.
+
 Reviewed baseline: `a8db47074a96f048e4fb30e8da820a58f12019d0` on
 `feature/bma-1.1`. Review covered all integration modules, service declarations,
 translations, specification, existing simulations, and the relevant native HA
@@ -59,7 +64,7 @@ dependency and runs the service suite.
 - [HA core 2026.9.4](https://github.com/home-assistant/core/blob/2026.9.4/homeassistant/core.py): eager task default.
 - [DataUpdateCoordinator 2026.9.4](https://github.com/home-assistant/core/blob/2026.9.4/homeassistant/helpers/update_coordinator.py): refresh locking/debounce and listener ordering.
 
-## Remaining real E2E acceptance checks
+## Original real E2E checklist (historical)
 
 1. Load this development branch on HA and check startup, reload, entity identities,
    action schemas, and no replay of historical external backups.
@@ -83,4 +88,5 @@ exclude every external mutation after the last read. A failed create may leave
 usable partial archives visible in inventory; it must not be reported as success.
 
 No real-provider E2E, restore test, release, merge, or production deletion was
-performed during this review. The PR remains draft pending E2E acceptance.
+performed during this historical review. The beta live E2E gates were subsequently
+completed as recorded above; the PR remains Draft for manual stable finalization.

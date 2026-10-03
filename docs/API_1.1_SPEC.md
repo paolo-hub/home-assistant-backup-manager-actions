@@ -1,7 +1,7 @@
 # Backup Manager Actions 1.1 Technical Specification
 
 **Status:** Frozen design contract (encryption semantics corrected with Paolo on 2026-09-29)
-**Target release:** 1.1.0  
+**Candidate release:** 1.1.0 (not yet published)
 **Branch:** `feature/bma-1.1`  
 **Scope:** API contract, classification, inventory, retention, events, and diagnostic entities  
 **Compatibility goal:** No breaking changes for existing 1.0.x callers
@@ -1065,9 +1065,9 @@ At minimum, automated tests must cover:
 - Archive Size exposes per-agent and per-source attributes;
 - incomplete inventory remains numerically observable but explicitly marked incomplete.
 
-## 21. Implementation sequence
+## 21. Historical implementation sequence
 
-Implementation should proceed in these blocks:
+The integration was implemented and validated through beta1/beta2 in these blocks:
 
 1. constants and normalized classification helpers;
 2. normalized backup serializer and inventory aggregation;
@@ -1079,12 +1079,20 @@ Implementation should proceed in these blocks:
 8. service schemas and `services.yaml`;
 9. translations/icons where required;
 10. automated tests;
-11. README/CHANGELOG updates and pending absolute LICENSE badge fix;
+11. README/CHANGELOG updates and LICENSE badge correction;
 12. end-to-end testing on Home Assistant with Local, SMB, and Google Drive.
 
 S3-Compatible remains a separate provider incident and must not block BMA 1.1 while native S3 backup creation itself still fails.
 
 ## 22. Acceptance criteria
+
+The integration criteria below are retained as the contract. Beta1 extended live
+E2E and beta2 focused live E2E are complete; see the README and
+[BETA2_VALIDATION.md](BETA2_VALIDATION.md) for scope and limitations. Provider
+failure/fail-closed has simulation and review coverage, not induced live-failure
+evidence. Companion-package scheduling/UI remains separate work. Candidate
+`1.1.0` adds no functional changes to the validated beta2. A green CI run on the
+exact candidate commit is required before manual review, merge and publication.
 
 BMA 1.1 is ready for release only when:
 

@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.1.0 — Unreleased stable candidate
+
+- Consolidate the 1.1 inventory, metadata/events, diagnostics and calendar GFS
+  retention capabilities introduced in beta1, plus beta2’s service device, SSL
+  help and verified create contents (details preserved below).
+- Add German, French, Spanish, Dutch and Brazilian Portuguese UI translations.
+- Add structural localization checks to CI; retain the complete behavioral suite.
+- Update documentation to reflect completed beta1 and beta2 live E2E and clarify
+  that the companion scheduling/UI package is separate and not included.
+- Preserve all functional code from `1.1.0b2`; only documentation, translations,
+  versioning and associated tests/CI change.
+
+Merge, tag and stable publication are pending manual action. Published stable
+remains `1.0.1`. No `1.1.0` release is implied by this candidate entry.
+
 ## 1.1.0b2 — 2026-10-02
 
 Focused refinements on the E2E-validated, immutable beta1 baseline.
@@ -16,14 +31,13 @@ Focused refinements on the E2E-validated, immutable beta1 baseline.
 - Run all 112 beta1 behavioral tests and six new beta2 tests: 118 pass.
   See `docs/BETA2_VALIDATION.md` for scope, sources, and the reduced live checklist.
 
-Beta2 requires its own focused Home Assistant E2E before promotion. Stable 1.0.1
-and beta1 remain unchanged; the 1.1 pull request remains Draft.
+Published on 2026-10-03. Focused live E2E and Local-only cleanup completed PASS
+on 2026-10-03; see the validation record above. Beta1 remains immutable.
 
 ## 1.1.0b1 — 2026-09-30
 
-First public beta of the 1.1 line. This build is intended for controlled end-to-end
-validation on Home Assistant before the final 1.1.0 release. The 1.0.1 release
-remains the stable production version.
+First public beta of the 1.1 line, published for controlled end-to-end validation
+before the final 1.1.0 release.
 
 ### Added
 
@@ -84,9 +98,10 @@ remains the stable production version.
   adapter/executor, and service schema/handler coverage.
 - Python compilation, hassfest, and HACS validation passed on the pre-beta
   implementation.
-- Real 1.1 E2E validation with Local, SMB, Google Drive, combined multi-agent
-  creation, metadata/event ordering, and retention execution is still pending
-  and is the acceptance gate for 1.1.0.
+- Subsequent extended live E2E completed PASS on 2026-10-02 with Local, SMB,
+  Google Drive, combined creation, metadata/events and scoped retention execution,
+  including encrypted backup deletion. Real provider failure was not induced;
+  fail-closed coverage remains simulated and reviewed.
 
 ## 1.0.1
 

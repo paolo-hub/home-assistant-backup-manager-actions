@@ -1,0 +1,208 @@
+{
+  "title": "Backup Manager Actions",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Backup Manager Actions",
+        "description": "Erweiterte Funktionen des Home Assistant Backup Manager für Automatisierungen bereitstellen. Es sind keine externen Zugangsdaten erforderlich."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Es kann nur eine Instanz von Backup Manager Actions eingerichtet werden."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "backup_agents": {
+        "name": "Backup Agents"
+      },
+      "backups": {
+        "name": "Backups"
+      },
+      "latest_backup": {
+        "name": "Letztes Backup"
+      },
+      "bma_backups": {
+        "name": "BMA-Backups"
+      },
+      "ha_native_backups": {
+        "name": "Native HA-Backups"
+      },
+      "app_update_backups": {
+        "name": "Backups von App-Updates"
+      },
+      "archive_size": {
+        "name": "Größe des Backup-Archivs"
+      }
+    },
+    "binary_sensor": {
+      "backup_agents_healthy": {
+        "name": "Backup Agents verfügbar"
+      }
+    }
+  },
+  "services": {
+    "create": {
+      "name": "Backup erstellen",
+      "description": "Ein Home Assistant-Backup erstellen und auf allen ausgewählten Backup Agents speichern.",
+      "fields": {
+        "agent_ids": {
+          "name": "Backup Agents",
+          "description": "IDs der Backup Agents, auf denen das Backup gespeichert werden muss."
+        },
+        "include_homeassistant": {
+          "name": "Home Assistant einschließen",
+          "description": "Die Home Assistant-Konfiguration in das Backup aufnehmen. SSL wird automatisch eingeschlossen, wenn Home Assistant eingeschlossen ist."
+        },
+        "include_database": {
+          "name": "Datenbank einschließen",
+          "description": "Die Home Assistant-Datenbank aufnehmen, wenn Home Assistant eingeschlossen ist."
+        },
+        "include_all_addons": {
+          "name": "Alle Add-ons einschließen",
+          "description": "Alle installierten Add-ons aufnehmen. Nicht mit einer Auswahl einzelner Add-ons kombinieren."
+        },
+        "include_addons": {
+          "name": "Ausgewählte Add-ons",
+          "description": "Optionale Liste der Slugs der einzuschließenden Add-ons."
+        },
+        "include_folders": {
+          "name": "Zusätzliche Ordner",
+          "description": "SSL wird automatisch eingeschlossen, wenn Home Assistant eingeschlossen ist, auch wenn keine zusätzlichen Ordner ausgewählt sind. SSL hier auswählen, um den Ordner ohne Home Assistant zu sichern."
+        },
+        "job_id": {
+          "name": "Job-ID",
+          "description": "Optionale dauerhafte BMA-Job-Kennung zur Klassifizierung des Backups, zum Beispiel full oder partial."
+        },
+        "name": {
+          "name": "Backup-Name",
+          "description": "Optionaler Backup-Name. Ohne Angabe erzeugt Home Assistant einen Standardnamen."
+        },
+        "password": {
+          "name": "Backup-Passwort",
+          "description": "Optionales Passwort zum Schutz des Backups."
+        }
+      }
+    },
+    "delete": {
+      "name": "Backup löschen",
+      "description": "Ein Backup von allen registrierten Backup Agents oder nur von ausdrücklich ausgewählten Agents löschen.",
+      "fields": {
+        "backup_id": {
+          "name": "Backup-ID",
+          "description": "Logische Home Assistant-Backup-ID (früher Slug genannt)."
+        },
+        "agent_ids": {
+          "name": "Backup Agents",
+          "description": "Optionale Agent-IDs. Für eine strikte Aufbewahrung alle erwarteten Ziele angeben, damit ein fehlender Agent die Löschung blockiert."
+        }
+      }
+    },
+    "refresh": {
+      "name": "Backup-Informationen aktualisieren",
+      "description": "Die Sensoren der Integration aktualisieren und optional den aktuellen Stand des Backup Manager zurückgeben."
+    },
+    "list_agents": {
+      "name": "Backup Agents auflisten",
+      "description": "Alle aktuell in Home Assistant registrierten Backup Agents zurückgeben."
+    },
+    "list_backups": {
+      "name": "Backups auflisten",
+      "description": "Alle für den Home Assistant Backup Manager sichtbaren logischen Backups zurückgeben, über alle Agents zusammengeführt."
+    },
+    "get_backup": {
+      "name": "Backup abrufen",
+      "description": "Details zu einem logischen Backup zurückgeben.",
+      "fields": {
+        "backup_id": {
+          "name": "Backup-ID",
+          "description": "Logische Home Assistant-Backup-ID, deren Details abgerufen werden sollen."
+        }
+      }
+    },
+    "plan_retention": {
+      "name": "Aufbewahrung planen",
+      "description": "Aus dem aktuellen Bestand des Backup Manager einen kalenderbasierten Aufbewahrungsplan berechnen, ohne Daten zu ändern.",
+      "fields": {
+        "source_type": {
+          "name": "Quelltyp",
+          "description": "Auszuwertende Backup-Klasse: BMA, HA Native oder App Update."
+        },
+        "job_id": {
+          "name": "Job-ID",
+          "description": "Nur für die BMA-Aufbewahrung erforderlich. Die Richtlinie gilt ausschließlich für Backups mit genau dieser BMA-Job-ID."
+        },
+        "group_by": {
+          "name": "App-Gruppierung",
+          "description": "Bei der Aufbewahrung von App Update-Backups nach App gruppieren oder alle Apps gemeinsam auswerten. Standardmäßig wird nach App gruppiert."
+        },
+        "agent_ids": {
+          "name": "Backup Agents",
+          "description": "Optionaler Geltungsbereich der Aufbewahrung. Ohne Angabe werden alle aktuell registrierten Backup Agents einbezogen."
+        },
+        "keep_last": {
+          "name": "Neueste behalten",
+          "description": "Die N neuesten Backups in jeder Aufbewahrungsgruppe behalten, einschließlich verschlüsselter Backups."
+        },
+        "daily": {
+          "name": "Täglich",
+          "description": "Das neueste Backup des aktuellen Kalendertags und jedes der vorherigen N-1 Kalendertage behalten."
+        },
+        "weekly": {
+          "name": "Wöchentlich",
+          "description": "Das neueste Backup der aktuellen ISO-Woche und jeder der vorherigen N-1 ISO-Wochen behalten."
+        },
+        "monthly": {
+          "name": "Monatlich",
+          "description": "Das neueste Backup des aktuellen Kalendermonats und jedes der vorherigen N-1 Kalendermonate behalten."
+        },
+        "yearly": {
+          "name": "Jährlich",
+          "description": "Das neueste Backup des aktuellen Kalenderjahres und jedes der vorherigen N-1 Kalenderjahre behalten."
+        }
+      }
+    },
+    "apply_retention": {
+      "name": "Aufbewahrung anwenden",
+      "description": "Den aktuellen kalenderbasierten Aufbewahrungsplan neu berechnen, zur Löschung vorgesehene Kopien im Geltungsbereich löschen und jede Löschung überprüfen.",
+      "fields": {
+        "source_type": {
+          "name": "Quelltyp",
+          "description": "Auszuwertende Backup-Klasse: BMA, HA Native oder App Update."
+        },
+        "job_id": {
+          "name": "Job-ID",
+          "description": "Nur für die BMA-Aufbewahrung erforderlich. Die Richtlinie gilt ausschließlich für Backups mit genau dieser BMA-Job-ID."
+        },
+        "group_by": {
+          "name": "App-Gruppierung",
+          "description": "Bei der Aufbewahrung von App Update-Backups nach App gruppieren oder alle Apps gemeinsam auswerten. Standardmäßig wird nach App gruppiert."
+        },
+        "agent_ids": {
+          "name": "Backup Agents",
+          "description": "Optionaler Geltungsbereich der Aufbewahrung. Ohne Angabe werden alle aktuell registrierten Backup Agents einbezogen."
+        },
+        "keep_last": {
+          "name": "Neueste behalten",
+          "description": "Die N neuesten Backups in jeder Aufbewahrungsgruppe behalten, einschließlich verschlüsselter Backups."
+        },
+        "daily": {
+          "name": "Täglich",
+          "description": "Das neueste Backup des aktuellen Kalendertags und jedes der vorherigen N-1 Kalendertage behalten."
+        },
+        "weekly": {
+          "name": "Wöchentlich",
+          "description": "Das neueste Backup der aktuellen ISO-Woche und jeder der vorherigen N-1 ISO-Wochen behalten."
+        },
+        "monthly": {
+          "name": "Monatlich",
+          "description": "Das neueste Backup des aktuellen Kalendermonats und jedes der vorherigen N-1 Kalendermonate behalten."
+        },
+        "yearly": {
+          "name": "Jährlich",
+          "description": "Das neueste Backup des aktuellen Kalenderjahres und jedes der vorherigen N-1 Kalenderjahre behalten."
+        }
+      }
+    }
+  }
+}

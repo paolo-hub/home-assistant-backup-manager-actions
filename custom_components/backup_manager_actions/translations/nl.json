@@ -1,0 +1,208 @@
+{
+  "title": "Backup Manager Actions",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Backup Manager Actions",
+        "description": "Geavanceerde bewerkingen van de Home Assistant Backup Manager beschikbaar maken voor automatiseringen. Er zijn geen externe inloggegevens nodig."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Er kan slechts één instantie van Backup Manager Actions worden ingesteld."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "backup_agents": {
+        "name": "Backup Agents"
+      },
+      "backups": {
+        "name": "Back-ups"
+      },
+      "latest_backup": {
+        "name": "Laatste back-up"
+      },
+      "bma_backups": {
+        "name": "BMA-back-ups"
+      },
+      "ha_native_backups": {
+        "name": "Native HA-back-ups"
+      },
+      "app_update_backups": {
+        "name": "Back-ups van app-updates"
+      },
+      "archive_size": {
+        "name": "Grootte van het back-uparchief"
+      }
+    },
+    "binary_sensor": {
+      "backup_agents_healthy": {
+        "name": "Backup Agents beschikbaar"
+      }
+    }
+  },
+  "services": {
+    "create": {
+      "name": "Back-up maken",
+      "description": "Eén Home Assistant-back-up maken en opslaan op alle geselecteerde Backup Agents.",
+      "fields": {
+        "agent_ids": {
+          "name": "Backup Agents",
+          "description": "ID’s van Backup Agents die de back-up moeten ontvangen."
+        },
+        "include_homeassistant": {
+          "name": "Home Assistant opnemen",
+          "description": "De configuratie van Home Assistant opnemen in de back-up. SSL wordt automatisch opgenomen wanneer Home Assistant wordt opgenomen."
+        },
+        "include_database": {
+          "name": "Database opnemen",
+          "description": "De database van Home Assistant opnemen wanneer Home Assistant wordt opgenomen."
+        },
+        "include_all_addons": {
+          "name": "Alle add-ons opnemen",
+          "description": "Alle geïnstalleerde add-ons opnemen. Niet combineren met een selectie van add-ons."
+        },
+        "include_addons": {
+          "name": "Geselecteerde add-ons",
+          "description": "Optionele lijst met slugs van de op te nemen add-ons."
+        },
+        "include_folders": {
+          "name": "Extra mappen",
+          "description": "SSL wordt automatisch opgenomen wanneer Home Assistant wordt opgenomen, ook als er geen extra mappen zijn geselecteerd. Selecteer hier SSL om die map zonder Home Assistant te back-uppen."
+        },
+        "job_id": {
+          "name": "Taak-ID",
+          "description": "Optionele vaste BMA-taak-ID om de back-up te classificeren, bijvoorbeeld full of partial."
+        },
+        "name": {
+          "name": "Back-upnaam",
+          "description": "Optionele naam voor de back-up. Home Assistant genereert een standaardnaam als deze wordt weggelaten."
+        },
+        "password": {
+          "name": "Back-upwachtwoord",
+          "description": "Optioneel wachtwoord om de back-up te beveiligen."
+        }
+      }
+    },
+    "delete": {
+      "name": "Back-up verwijderen",
+      "description": "Een back-up verwijderen van alle geregistreerde Backup Agents, of alleen van expliciet geselecteerde agents.",
+      "fields": {
+        "backup_id": {
+          "name": "Back-up-ID",
+          "description": "Logische Home Assistant-back-up-ID (voorheen slug genoemd)."
+        },
+        "agent_ids": {
+          "name": "Backup Agents",
+          "description": "Optionele agent-ID’s. Geef voor strikt bewaarbeleid alle verwachte bestemmingen op, zodat een ontbrekende agent het verwijderen blokkeert."
+        }
+      }
+    },
+    "refresh": {
+      "name": "Back-upinformatie vernieuwen",
+      "description": "De sensoren van de integratie vernieuwen en optioneel de huidige toestand van de Backup Manager teruggeven."
+    },
+    "list_agents": {
+      "name": "Backup Agents weergeven",
+      "description": "Alle momenteel in Home Assistant geregistreerde Backup Agents teruggeven."
+    },
+    "list_backups": {
+      "name": "Back-ups weergeven",
+      "description": "Alle logische back-ups teruggeven die zichtbaar zijn voor de Home Assistant Backup Manager, samengevoegd over alle agents."
+    },
+    "get_backup": {
+      "name": "Back-up ophalen",
+      "description": "Details van één logische back-up teruggeven.",
+      "fields": {
+        "backup_id": {
+          "name": "Back-up-ID",
+          "description": "Logische Home Assistant-back-up-ID die moet worden bekeken."
+        }
+      }
+    },
+    "plan_retention": {
+      "name": "Bewaarbeleid plannen",
+      "description": "Op basis van de huidige inventaris van de Backup Manager een kalendergebonden bewaarplan berekenen, zonder gegevens te wijzigen.",
+      "fields": {
+        "source_type": {
+          "name": "Brontype",
+          "description": "Te beoordelen back-upklasse: BMA, HA Native of App Update."
+        },
+        "job_id": {
+          "name": "Taak-ID",
+          "description": "Alleen vereist voor BMA-bewaarbeleid. Het beleid geldt uitsluitend voor back-ups met exact deze BMA-taak-ID."
+        },
+        "group_by": {
+          "name": "Groepering per app",
+          "description": "Voor App Update-bewaarbeleid back-ups per app groeperen of alle apps samen beoordelen. Standaard wordt per app gegroepeerd."
+        },
+        "agent_ids": {
+          "name": "Backup Agents",
+          "description": "Optioneel bereik van het bewaarbeleid. Als dit wordt weggelaten, worden alle momenteel geregistreerde Backup Agents meegenomen."
+        },
+        "keep_last": {
+          "name": "Nieuwste bewaren",
+          "description": "De N nieuwste back-ups in elke bewaargroep bewaren, inclusief versleutelde back-ups."
+        },
+        "daily": {
+          "name": "Dagelijks",
+          "description": "De nieuwste back-up van de huidige kalenderdag en elk van de voorgaande N-1 kalenderdagen bewaren."
+        },
+        "weekly": {
+          "name": "Wekelijks",
+          "description": "De nieuwste back-up van de huidige ISO-week en elk van de voorgaande N-1 ISO-weken bewaren."
+        },
+        "monthly": {
+          "name": "Maandelijks",
+          "description": "De nieuwste back-up van de huidige kalendermaand en elk van de voorgaande N-1 kalendermaanden bewaren."
+        },
+        "yearly": {
+          "name": "Jaarlijks",
+          "description": "De nieuwste back-up van het huidige kalenderjaar en elk van de voorgaande N-1 kalenderjaren bewaren."
+        }
+      }
+    },
+    "apply_retention": {
+      "name": "Bewaarbeleid toepassen",
+      "description": "Het huidige kalendergebonden bewaarplan opnieuw berekenen, de daarvoor in aanmerking komende kopieën binnen het bereik verwijderen en elke verwijdering controleren.",
+      "fields": {
+        "source_type": {
+          "name": "Brontype",
+          "description": "Te beoordelen back-upklasse: BMA, HA Native of App Update."
+        },
+        "job_id": {
+          "name": "Taak-ID",
+          "description": "Alleen vereist voor BMA-bewaarbeleid. Het beleid geldt uitsluitend voor back-ups met exact deze BMA-taak-ID."
+        },
+        "group_by": {
+          "name": "Groepering per app",
+          "description": "Voor App Update-bewaarbeleid back-ups per app groeperen of alle apps samen beoordelen. Standaard wordt per app gegroepeerd."
+        },
+        "agent_ids": {
+          "name": "Backup Agents",
+          "description": "Optioneel bereik van het bewaarbeleid. Als dit wordt weggelaten, worden alle momenteel geregistreerde Backup Agents meegenomen."
+        },
+        "keep_last": {
+          "name": "Nieuwste bewaren",
+          "description": "De N nieuwste back-ups in elke bewaargroep bewaren, inclusief versleutelde back-ups."
+        },
+        "daily": {
+          "name": "Dagelijks",
+          "description": "De nieuwste back-up van de huidige kalenderdag en elk van de voorgaande N-1 kalenderdagen bewaren."
+        },
+        "weekly": {
+          "name": "Wekelijks",
+          "description": "De nieuwste back-up van de huidige ISO-week en elk van de voorgaande N-1 ISO-weken bewaren."
+        },
+        "monthly": {
+          "name": "Maandelijks",
+          "description": "De nieuwste back-up van de huidige kalendermaand en elk van de voorgaande N-1 kalendermaanden bewaren."
+        },
+        "yearly": {
+          "name": "Jaarlijks",
+          "description": "De nieuwste back-up van het huidige kalenderjaar en elk van de voorgaande N-1 kalenderjaren bewaren."
+        }
+      }
+    }
+  }
+}

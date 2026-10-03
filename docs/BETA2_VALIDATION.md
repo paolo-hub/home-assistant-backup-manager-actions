@@ -2,7 +2,9 @@
 
 Baseline: tag `1.1.0b1`, commit `46f98afb17683fbf2941f45b78d736e25b749d75`.
 Beta1's real HA 2026.9.4 E2E completed on 2026-10-02; detailed evidence is in the
-project Evernote diary. This document does not claim beta2 live E2E has run.
+project Evernote diary. Published beta2: `1.1.0b2` at
+`53dca63e9facb5e594ebb2f991434a30b124d3f5`. Its focused live E2E completed PASS on
+2026-10-03, including Local-only cleanup.
 
 ## Design and regression boundary
 
@@ -49,7 +51,25 @@ UI suites: 118 test functions total (112 existing, six new).
 - [HA 2026.9.4 native SSL rule](https://github.com/home-assistant/core/blob/2026.9.4/homeassistant/components/hassio/backup.py)
 - [HA frontend service editor](https://github.com/home-assistant/frontend/blob/dev/src/components/ha-service-control.ts)
 
-## Reduced beta2 live E2E
+## Completed reduced beta2 live E2E
+
+Verified on Home Assistant 2026.9.4 after upgrading beta1 to beta2:
+
+- One service device and all eight original entity IDs preserved; no duplicates
+  after upgrade/restart or a second complete restart.
+- Italian action UI shows Additional folders and both SSL explanations; SSL
+  remains explicitly selectable.
+- Verified create fields match get_backup for HA included with no requested
+  folders (`ssl` present), and HA excluded with `share` (`ssl` absent).
+- HA included with `share` yields `share` + `ssl`; explicit `ssl` without HA works.
+- One coherent backup-created event per observed create.
+- All five disposable backups deleted from Local only, with no remaining copies.
+
+No functional BMA blocker was identified. Provider failure was not induced on
+live providers; fail-closed remains covered by simulations and review. S3/iDrive
+is a separate native-provider incident outside scope.
+
+### Procedure retained for reproducibility (completed)
 
 1. Before updating, record the eight entity IDs. Install beta2 via HACS and
    restart HA. Confirm version, clean startup and one service device with all
@@ -67,5 +87,5 @@ UI suites: 118 test functions total (112 existing, six new).
 
 Use a dedicated beta2 test job and clean up only its known disposable backups.
 No repeat of destructive GFS or provider-failure E2E is required by this change.
-S3/iDrive remains outside scope. Real registry migration and visual UX remain
-pending until these checks are performed on the installed beta2.
+S3/iDrive remains outside scope. Real registry migration and visual UX passed
+as recorded above; this historical procedure is not an outstanding release gate.

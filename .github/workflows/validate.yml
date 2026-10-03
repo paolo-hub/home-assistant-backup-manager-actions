@@ -63,3 +63,5 @@ jobs:
         run: python tests/test_device.py
       - name: Check action UI schema and translations
         run: python tests/test_action_ui.py
+      - name: Validate all shipped localizations
+        run: python tests/test_translations.py
