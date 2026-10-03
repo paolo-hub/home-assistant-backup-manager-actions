@@ -1,0 +1,208 @@
+{
+  "title": "Backup Manager Actions",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Backup Manager Actions",
+        "description": "Rendre les opérations avancées du Backup Manager de Home Assistant accessibles aux automatisations. Aucun identifiant externe n’est nécessaire."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Une seule instance de Backup Manager Actions peut être configurée."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "backup_agents": {
+        "name": "Backup Agents"
+      },
+      "backups": {
+        "name": "Sauvegardes"
+      },
+      "latest_backup": {
+        "name": "Dernière sauvegarde"
+      },
+      "bma_backups": {
+        "name": "Sauvegardes BMA"
+      },
+      "ha_native_backups": {
+        "name": "Sauvegardes natives HA"
+      },
+      "app_update_backups": {
+        "name": "Sauvegardes de mise à jour d’applications"
+      },
+      "archive_size": {
+        "name": "Taille des archives de sauvegarde"
+      }
+    },
+    "binary_sensor": {
+      "backup_agents_healthy": {
+        "name": "Backup Agents disponibles"
+      }
+    }
+  },
+  "services": {
+    "create": {
+      "name": "Créer une sauvegarde",
+      "description": "Créer une sauvegarde Home Assistant et la stocker sur tous les Backup Agents sélectionnés.",
+      "fields": {
+        "agent_ids": {
+          "name": "Backup Agents",
+          "description": "Identifiants des Backup Agents qui doivent recevoir la sauvegarde."
+        },
+        "include_homeassistant": {
+          "name": "Inclure Home Assistant",
+          "description": "Inclure la configuration de Home Assistant dans la sauvegarde. SSL est automatiquement inclus lorsque Home Assistant est inclus."
+        },
+        "include_database": {
+          "name": "Inclure la base de données",
+          "description": "Inclure la base de données de Home Assistant lorsque Home Assistant est inclus."
+        },
+        "include_all_addons": {
+          "name": "Inclure tous les modules complémentaires",
+          "description": "Inclure tous les modules complémentaires installés. Ne pas combiner avec une sélection de modules complémentaires."
+        },
+        "include_addons": {
+          "name": "Modules complémentaires sélectionnés",
+          "description": "Liste facultative des slugs des modules complémentaires à inclure."
+        },
+        "include_folders": {
+          "name": "Dossiers supplémentaires",
+          "description": "SSL est automatiquement inclus lorsque Home Assistant est inclus, même si aucun dossier supplémentaire n’est sélectionné. Sélectionnez SSL ici pour le sauvegarder sans inclure Home Assistant."
+        },
+        "job_id": {
+          "name": "Identifiant de tâche",
+          "description": "Identifiant BMA stable et facultatif utilisé pour classer la sauvegarde, par exemple full ou partial."
+        },
+        "name": {
+          "name": "Nom de la sauvegarde",
+          "description": "Nom facultatif de la sauvegarde. Home Assistant génère un nom par défaut s’il est omis."
+        },
+        "password": {
+          "name": "Mot de passe de la sauvegarde",
+          "description": "Mot de passe facultatif utilisé pour protéger la sauvegarde."
+        }
+      }
+    },
+    "delete": {
+      "name": "Supprimer une sauvegarde",
+      "description": "Supprimer une sauvegarde de tous les Backup Agents enregistrés, ou uniquement des agents explicitement sélectionnés.",
+      "fields": {
+        "backup_id": {
+          "name": "Identifiant de sauvegarde",
+          "description": "Identifiant logique de la sauvegarde Home Assistant (anciennement appelé slug)."
+        },
+        "agent_ids": {
+          "name": "Backup Agents",
+          "description": "Identifiants d’agents facultatifs. Pour une conservation stricte, indiquez toutes les destinations attendues afin qu’un agent manquant bloque la suppression."
+        }
+      }
+    },
+    "refresh": {
+      "name": "Actualiser les informations de sauvegarde",
+      "description": "Actualiser les capteurs de l’intégration et renvoyer, si demandé, un état actuel du Backup Manager."
+    },
+    "list_agents": {
+      "name": "Lister les Backup Agents",
+      "description": "Renvoyer tous les Backup Agents actuellement enregistrés dans Home Assistant."
+    },
+    "list_backups": {
+      "name": "Lister les sauvegardes",
+      "description": "Renvoyer toutes les sauvegardes logiques visibles par le Backup Manager de Home Assistant, regroupées entre les agents."
+    },
+    "get_backup": {
+      "name": "Obtenir une sauvegarde",
+      "description": "Renvoyer les détails d’une sauvegarde logique.",
+      "fields": {
+        "backup_id": {
+          "name": "Identifiant de sauvegarde",
+          "description": "Identifiant logique de la sauvegarde Home Assistant à examiner."
+        }
+      }
+    },
+    "plan_retention": {
+      "name": "Planifier la conservation",
+      "description": "Calculer un plan de conservation calendaire à partir de l’inventaire actuel du Backup Manager, sans modifier les données.",
+      "fields": {
+        "source_type": {
+          "name": "Type de source",
+          "description": "Classe de sauvegarde à évaluer : BMA, HA Native ou App Update."
+        },
+        "job_id": {
+          "name": "Identifiant de tâche",
+          "description": "Requis uniquement pour la conservation BMA. La règle s’applique uniquement aux sauvegardes portant exactement cet identifiant de tâche BMA."
+        },
+        "group_by": {
+          "name": "Regroupement par application",
+          "description": "Pour la conservation des sauvegardes App Update, regrouper par application ou évaluer toutes les applications ensemble. Le regroupement par application est utilisé par défaut."
+        },
+        "agent_ids": {
+          "name": "Backup Agents",
+          "description": "Périmètre de conservation facultatif. S’il est omis, tous les Backup Agents actuellement enregistrés sont inclus."
+        },
+        "keep_last": {
+          "name": "Conserver les plus récentes",
+          "description": "Conserver les N sauvegardes les plus récentes dans chaque groupe de conservation, y compris les sauvegardes chiffrées."
+        },
+        "daily": {
+          "name": "Quotidienne",
+          "description": "Conserver la sauvegarde la plus récente du jour calendaire actuel et de chacun des N-1 jours calendaires précédents."
+        },
+        "weekly": {
+          "name": "Hebdomadaire",
+          "description": "Conserver la sauvegarde la plus récente de la semaine ISO actuelle et de chacune des N-1 semaines ISO précédentes."
+        },
+        "monthly": {
+          "name": "Mensuelle",
+          "description": "Conserver la sauvegarde la plus récente du mois calendaire actuel et de chacun des N-1 mois calendaires précédents."
+        },
+        "yearly": {
+          "name": "Annuelle",
+          "description": "Conserver la sauvegarde la plus récente de l’année calendaire actuelle et de chacune des N-1 années calendaires précédentes."
+        }
+      }
+    },
+    "apply_retention": {
+      "name": "Appliquer la conservation",
+      "description": "Recalculer le plan de conservation calendaire actuel, supprimer les copies éligibles dans le périmètre et vérifier chaque suppression.",
+      "fields": {
+        "source_type": {
+          "name": "Type de source",
+          "description": "Classe de sauvegarde à évaluer : BMA, HA Native ou App Update."
+        },
+        "job_id": {
+          "name": "Identifiant de tâche",
+          "description": "Requis uniquement pour la conservation BMA. La règle s’applique uniquement aux sauvegardes portant exactement cet identifiant de tâche BMA."
+        },
+        "group_by": {
+          "name": "Regroupement par application",
+          "description": "Pour la conservation des sauvegardes App Update, regrouper par application ou évaluer toutes les applications ensemble. Le regroupement par application est utilisé par défaut."
+        },
+        "agent_ids": {
+          "name": "Backup Agents",
+          "description": "Périmètre de conservation facultatif. S’il est omis, tous les Backup Agents actuellement enregistrés sont inclus."
+        },
+        "keep_last": {
+          "name": "Conserver les plus récentes",
+          "description": "Conserver les N sauvegardes les plus récentes dans chaque groupe de conservation, y compris les sauvegardes chiffrées."
+        },
+        "daily": {
+          "name": "Quotidienne",
+          "description": "Conserver la sauvegarde la plus récente du jour calendaire actuel et de chacun des N-1 jours calendaires précédents."
+        },
+        "weekly": {
+          "name": "Hebdomadaire",
+          "description": "Conserver la sauvegarde la plus récente de la semaine ISO actuelle et de chacune des N-1 semaines ISO précédentes."
+        },
+        "monthly": {
+          "name": "Mensuelle",
+          "description": "Conserver la sauvegarde la plus récente du mois calendaire actuel et de chacun des N-1 mois calendaires précédents."
+        },
+        "yearly": {
+          "name": "Annuelle",
+          "description": "Conserver la sauvegarde la plus récente de l’année calendaire actuelle et de chacune des N-1 années calendaires précédentes."
+        }
+      }
+    }
+  }
+}

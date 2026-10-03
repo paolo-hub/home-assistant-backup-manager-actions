@@ -12,7 +12,8 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .adapter import BackupManagerActionsAdapter
-from .const import DOMAIN
+from .const import DOMAIN, EVENT_BACKUP_CREATED
+from .events import BackupCreatedEventTracker
 
 LOGGER = logging.getLogger(__name__)
 
@@ -25,6 +26,7 @@ class BackupManagerActionsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         hass: HomeAssistant,
         entry: ConfigEntry,
         adapter: BackupManagerActionsAdapter,
+        event_tracker: BackupCreatedEventTracker,
     ) -> None:
         """Initialize the coordinator."""
         super().__init__(
@@ -34,14 +36,54 @@ class BackupManagerActionsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             name=DOMAIN,
         )
         self.adapter = adapter
+        self._event_tracker = event_tracker
+        self._pending_event_data: list[dict[str, Any]] = []
         self._unsubscribers: list[Callable[[], None]] = []
 
     async def _async_update_data(self) -> dict[str, Any]:
-        """Fetch a coherent snapshot from the Backup Manager."""
+        """Fetch a coherent snapshot and emit events from complete inventories."""
         try:
-            return await self.adapter.async_snapshot()
+            snapshot, backups = await self.adapter.async_snapshot_with_backups()
         except Exception as err:
             raise UpdateFailed(str(err)) from err
+
+        self._pending_event_data = []
+        if snapshot.get("inventory_complete") is True:
+            self._pending_event_data = self._event_tracker.process_complete_inventory(
+                backups
+            )
+
+        return snapshot
+
+    @callback
+    def _async_refresh_finished(self) -> None:
+        """Publish pending events after coordinator data has been committed."""
+        if not self._pending_event_data:
+            return
+
+        pending = self._pending_event_data
+        self._pending_event_data = []
+        self.hass.async_create_task(
+            self._async_fire_pending_events(pending), eager_start=False
+        )
+
+    async def _async_fire_pending_events(
+        self,
+        pending: list[dict[str, Any]],
+    ) -> None:
+        """Fire events in a separate task after refresh listeners can update."""
+        for event_data in pending:
+            self.hass.bus.async_fire(EVENT_BACKUP_CREATED, event_data)
+
+    @callback
+    def async_publish_verified_bma_create(
+        self,
+        result: dict[str, Any],
+    ) -> None:
+        """Emit one event after a BMA create completed verification."""
+        event_data = self._event_tracker.record_verified_bma_create(result)
+        if event_data is not None:
+            self.hass.bus.async_fire(EVENT_BACKUP_CREATED, event_data)
 
     @callback
     def async_subscribe(self) -> None:

@@ -1,0 +1,208 @@
+{
+  "title": "Backup Manager Actions",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Backup Manager Actions",
+        "description": "Ofrecer las operaciones avanzadas del Backup Manager de Home Assistant a las automatizaciones. No se requieren credenciales externas."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Solo se puede configurar una instancia de Backup Manager Actions."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "backup_agents": {
+        "name": "Backup Agents"
+      },
+      "backups": {
+        "name": "Copias de seguridad"
+      },
+      "latest_backup": {
+        "name": "Última copia de seguridad"
+      },
+      "bma_backups": {
+        "name": "Copias de seguridad BMA"
+      },
+      "ha_native_backups": {
+        "name": "Copias de seguridad nativas de HA"
+      },
+      "app_update_backups": {
+        "name": "Copias de seguridad de actualización de aplicaciones"
+      },
+      "archive_size": {
+        "name": "Tamaño del conjunto de copias de seguridad"
+      }
+    },
+    "binary_sensor": {
+      "backup_agents_healthy": {
+        "name": "Backup Agents disponibles"
+      }
+    }
+  },
+  "services": {
+    "create": {
+      "name": "Crear copia de seguridad",
+      "description": "Crear una copia de seguridad de Home Assistant y almacenarla en todos los Backup Agents seleccionados.",
+      "fields": {
+        "agent_ids": {
+          "name": "Backup Agents",
+          "description": "Identificadores de los Backup Agents que deben recibir la copia de seguridad."
+        },
+        "include_homeassistant": {
+          "name": "Incluir Home Assistant",
+          "description": "Incluir la configuración de Home Assistant en la copia de seguridad. SSL se incluye automáticamente cuando se incluye Home Assistant."
+        },
+        "include_database": {
+          "name": "Incluir base de datos",
+          "description": "Incluir la base de datos de Home Assistant cuando se incluye Home Assistant."
+        },
+        "include_all_addons": {
+          "name": "Incluir todos los complementos",
+          "description": "Incluir todos los complementos instalados. No combinar con una selección de complementos."
+        },
+        "include_addons": {
+          "name": "Complementos seleccionados",
+          "description": "Lista opcional de slugs de los complementos que se incluirán."
+        },
+        "include_folders": {
+          "name": "Carpetas adicionales",
+          "description": "SSL se incluye automáticamente cuando se incluye Home Assistant, aunque no se seleccionen carpetas adicionales. Selecciona SSL aquí para guardar esa carpeta sin incluir Home Assistant."
+        },
+        "job_id": {
+          "name": "ID de tarea",
+          "description": "Identificador BMA estable y opcional de la tarea, utilizado para clasificar la copia de seguridad, por ejemplo full o partial."
+        },
+        "name": {
+          "name": "Nombre de la copia de seguridad",
+          "description": "Nombre opcional de la copia de seguridad. Home Assistant genera un nombre predeterminado si se omite."
+        },
+        "password": {
+          "name": "Contraseña de la copia de seguridad",
+          "description": "Contraseña opcional para proteger la copia de seguridad."
+        }
+      }
+    },
+    "delete": {
+      "name": "Eliminar copia de seguridad",
+      "description": "Eliminar una copia de seguridad de todos los Backup Agents registrados o solo de los agentes seleccionados explícitamente.",
+      "fields": {
+        "backup_id": {
+          "name": "ID de copia de seguridad",
+          "description": "Identificador lógico de la copia de seguridad de Home Assistant (anteriormente llamado slug)."
+        },
+        "agent_ids": {
+          "name": "Backup Agents",
+          "description": "Identificadores opcionales de agentes. Para una retención estricta, indica todos los destinos esperados para que la ausencia de un agente bloquee la eliminación."
+        }
+      }
+    },
+    "refresh": {
+      "name": "Actualizar información de copias de seguridad",
+      "description": "Actualizar los sensores de la integración y, opcionalmente, devolver el estado actual del Backup Manager."
+    },
+    "list_agents": {
+      "name": "Listar Backup Agents",
+      "description": "Devolver todos los Backup Agents registrados actualmente en Home Assistant."
+    },
+    "list_backups": {
+      "name": "Listar copias de seguridad",
+      "description": "Devolver todas las copias de seguridad lógicas visibles para el Backup Manager de Home Assistant, agrupadas entre agentes."
+    },
+    "get_backup": {
+      "name": "Obtener copia de seguridad",
+      "description": "Devolver los detalles de una copia de seguridad lógica.",
+      "fields": {
+        "backup_id": {
+          "name": "ID de copia de seguridad",
+          "description": "Identificador lógico de la copia de seguridad de Home Assistant que se desea consultar."
+        }
+      }
+    },
+    "plan_retention": {
+      "name": "Planificar retención",
+      "description": "Calcular un plan de retención por calendario a partir del inventario actual del Backup Manager, sin modificar datos.",
+      "fields": {
+        "source_type": {
+          "name": "Tipo de origen",
+          "description": "Clase de copia de seguridad que se evaluará: BMA, HA Native o App Update."
+        },
+        "job_id": {
+          "name": "ID de tarea",
+          "description": "Obligatorio solo para la retención BMA. La política se aplica únicamente a las copias de seguridad con este ID exacto de tarea BMA."
+        },
+        "group_by": {
+          "name": "Agrupación por aplicación",
+          "description": "Para la retención de App Update, agrupar las copias de seguridad por aplicación o evaluar todas las aplicaciones juntas. De forma predeterminada, se agrupan por aplicación."
+        },
+        "agent_ids": {
+          "name": "Backup Agents",
+          "description": "Ámbito opcional de retención. Si se omite, se incluyen todos los Backup Agents registrados actualmente."
+        },
+        "keep_last": {
+          "name": "Conservar las últimas",
+          "description": "Conservar las N copias de seguridad más recientes de cada grupo de retención, incluidas las cifradas."
+        },
+        "daily": {
+          "name": "Diaria",
+          "description": "Conservar la copia de seguridad más reciente del día natural actual y de cada uno de los N-1 días naturales anteriores."
+        },
+        "weekly": {
+          "name": "Semanal",
+          "description": "Conservar la copia de seguridad más reciente de la semana ISO actual y de cada una de las N-1 semanas ISO anteriores."
+        },
+        "monthly": {
+          "name": "Mensual",
+          "description": "Conservar la copia de seguridad más reciente del mes natural actual y de cada uno de los N-1 meses naturales anteriores."
+        },
+        "yearly": {
+          "name": "Anual",
+          "description": "Conservar la copia de seguridad más reciente del año natural actual y de cada uno de los N-1 años naturales anteriores."
+        }
+      }
+    },
+    "apply_retention": {
+      "name": "Aplicar retención",
+      "description": "Recalcular el plan de retención por calendario actual, eliminar las copias aptas dentro del ámbito y verificar cada eliminación.",
+      "fields": {
+        "source_type": {
+          "name": "Tipo de origen",
+          "description": "Clase de copia de seguridad que se evaluará: BMA, HA Native o App Update."
+        },
+        "job_id": {
+          "name": "ID de tarea",
+          "description": "Obligatorio solo para la retención BMA. La política se aplica únicamente a las copias de seguridad con este ID exacto de tarea BMA."
+        },
+        "group_by": {
+          "name": "Agrupación por aplicación",
+          "description": "Para la retención de App Update, agrupar las copias de seguridad por aplicación o evaluar todas las aplicaciones juntas. De forma predeterminada, se agrupan por aplicación."
+        },
+        "agent_ids": {
+          "name": "Backup Agents",
+          "description": "Ámbito opcional de retención. Si se omite, se incluyen todos los Backup Agents registrados actualmente."
+        },
+        "keep_last": {
+          "name": "Conservar las últimas",
+          "description": "Conservar las N copias de seguridad más recientes de cada grupo de retención, incluidas las cifradas."
+        },
+        "daily": {
+          "name": "Diaria",
+          "description": "Conservar la copia de seguridad más reciente del día natural actual y de cada uno de los N-1 días naturales anteriores."
+        },
+        "weekly": {
+          "name": "Semanal",
+          "description": "Conservar la copia de seguridad más reciente de la semana ISO actual y de cada una de las N-1 semanas ISO anteriores."
+        },
+        "monthly": {
+          "name": "Mensual",
+          "description": "Conservar la copia de seguridad más reciente del mes natural actual y de cada uno de los N-1 meses naturales anteriores."
+        },
+        "yearly": {
+          "name": "Anual",
+          "description": "Conservar la copia de seguridad más reciente del año natural actual y de cada uno de los N-1 años naturales anteriores."
+        }
+      }
+    }
+  }
+}

@@ -21,6 +21,18 @@
       },
       "latest_backup": {
         "name": "Latest backup"
+      },
+      "bma_backups": {
+        "name": "BMA backups"
+      },
+      "ha_native_backups": {
+        "name": "HA native backups"
+      },
+      "app_update_backups": {
+        "name": "App update backups"
+      },
+      "archive_size": {
+        "name": "Backup archive size"
       }
     },
     "binary_sensor": {
@@ -40,7 +52,7 @@
         },
         "include_homeassistant": {
           "name": "Include Home Assistant",
-          "description": "Include the Home Assistant configuration in the backup."
+          "description": "Include the Home Assistant configuration in the backup. SSL is automatically included when Home Assistant is included."
         },
         "include_database": {
           "name": "Include database",
@@ -55,8 +67,12 @@
           "description": "Optional list of add-on slugs to include."
         },
         "include_folders": {
-          "name": "Folders",
-          "description": "Optional Home Assistant folders to include."
+          "name": "Additional folders",
+          "description": "SSL is automatically included when Home Assistant is included, even if no additional folders are selected. Select SSL here to back it up when Home Assistant is not included."
+        },
+        "job_id": {
+          "name": "Job ID",
+          "description": "Optional stable BMA job identifier used to classify the backup, for example full or partial."
         },
         "name": {
           "name": "Backup name",
@@ -101,6 +117,90 @@
         "backup_id": {
           "name": "Backup ID",
           "description": "Logical Home Assistant backup ID to inspect."
+        }
+      }
+    },
+    "plan_retention": {
+      "name": "Plan retention",
+      "description": "Calculate a read-only calendar retention plan from the current Backup Manager inventory.",
+      "fields": {
+        "source_type": {
+          "name": "Source type",
+          "description": "Backup class to evaluate: BMA, HA Native, or App Update."
+        },
+        "job_id": {
+          "name": "Job ID",
+          "description": "Required only for BMA retention. The policy applies only to backups with this exact BMA job ID."
+        },
+        "group_by": {
+          "name": "App grouping",
+          "description": "For App Update retention, group backups per App or evaluate all Apps together. Defaults to per App."
+        },
+        "agent_ids": {
+          "name": "Backup agents",
+          "description": "Optional retention scope. When omitted, all currently registered Backup Agents are included."
+        },
+        "keep_last": {
+          "name": "Keep last",
+          "description": "Keep the newest N backups in each retention group, including encrypted backups."
+        },
+        "daily": {
+          "name": "Daily",
+          "description": "Keep the newest backup in each of the current and previous N-1 calendar days."
+        },
+        "weekly": {
+          "name": "Weekly",
+          "description": "Keep the newest backup in each of the current and previous N-1 ISO weeks."
+        },
+        "monthly": {
+          "name": "Monthly",
+          "description": "Keep the newest backup in each of the current and previous N-1 calendar months."
+        },
+        "yearly": {
+          "name": "Yearly",
+          "description": "Keep the newest backup in each of the current and previous N-1 calendar years."
+        }
+      }
+    },
+    "apply_retention": {
+      "name": "Apply retention",
+      "description": "Recalculate the current calendar retention plan, delete eligible in-scope copies, and verify every deletion.",
+      "fields": {
+        "source_type": {
+          "name": "Source type",
+          "description": "Backup class to evaluate: BMA, HA Native, or App Update."
+        },
+        "job_id": {
+          "name": "Job ID",
+          "description": "Required only for BMA retention. The policy applies only to backups with this exact BMA job ID."
+        },
+        "group_by": {
+          "name": "App grouping",
+          "description": "For App Update retention, group backups per App or evaluate all Apps together. Defaults to per App."
+        },
+        "agent_ids": {
+          "name": "Backup agents",
+          "description": "Optional retention scope. When omitted, all currently registered Backup Agents are included."
+        },
+        "keep_last": {
+          "name": "Keep last",
+          "description": "Keep the newest N backups in each retention group, including encrypted backups."
+        },
+        "daily": {
+          "name": "Daily",
+          "description": "Keep the newest backup in each of the current and previous N-1 calendar days."
+        },
+        "weekly": {
+          "name": "Weekly",
+          "description": "Keep the newest backup in each of the current and previous N-1 ISO weeks."
+        },
+        "monthly": {
+          "name": "Monthly",
+          "description": "Keep the newest backup in each of the current and previous N-1 calendar months."
+        },
+        "yearly": {
+          "name": "Yearly",
+          "description": "Keep the newest backup in each of the current and previous N-1 calendar years."
         }
       }
     }

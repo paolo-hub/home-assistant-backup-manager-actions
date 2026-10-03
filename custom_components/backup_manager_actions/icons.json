@@ -17,6 +17,12 @@
     },
     "get_backup": {
       "service": "mdi:file-search"
+    },
+    "plan_retention": {
+      "service": "mdi:calendar-search"
+    },
+    "apply_retention": {
+      "service": "mdi:calendar-check"
     }
   }
 }

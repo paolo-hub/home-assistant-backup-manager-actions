@@ -21,6 +21,18 @@
       },
       "latest_backup": {
         "name": "Ultimo backup"
+      },
+      "bma_backups": {
+        "name": "Backup BMA"
+      },
+      "ha_native_backups": {
+        "name": "Backup HA nativi"
+      },
+      "app_update_backups": {
+        "name": "Backup aggiornamento App"
+      },
+      "archive_size": {
+        "name": "Dimensione archivio backup"
       }
     },
     "binary_sensor": {
@@ -40,7 +52,7 @@
         },
         "include_homeassistant": {
           "name": "Includi Home Assistant",
-          "description": "Include la configurazione di Home Assistant nel backup."
+          "description": "Include la configurazione di Home Assistant nel backup. SSL viene inclusa automaticamente quando Home Assistant è incluso."
         },
         "include_database": {
           "name": "Includi database",
@@ -55,8 +67,12 @@
           "description": "Elenco opzionale degli slug degli add-on da includere."
         },
         "include_folders": {
-          "name": "Cartelle",
-          "description": "Cartelle opzionali da includere nel backup."
+          "name": "Cartelle aggiuntive",
+          "description": "SSL viene inclusa automaticamente quando Home Assistant è incluso, anche senza selezionare cartelle aggiuntive. Seleziona SSL qui per salvarla quando Home Assistant non è incluso."
+        },
+        "job_id": {
+          "name": "ID job",
+          "description": "Identificatore stabile opzionale del job BMA usato per classificare il backup, ad esempio full o partial."
         },
         "name": {
           "name": "Nome backup",
@@ -101,6 +117,90 @@
         "backup_id": {
           "name": "ID backup",
           "description": "ID logico del backup di Home Assistant da ispezionare."
+        }
+      }
+    },
+    "plan_retention": {
+      "name": "Pianifica retention",
+      "description": "Calcola un piano di retention a calendario in sola lettura sull'inventario corrente del Backup Manager.",
+      "fields": {
+        "source_type": {
+          "name": "Tipo sorgente",
+          "description": "Classe di backup da valutare: BMA, HA Native oppure App Update."
+        },
+        "job_id": {
+          "name": "ID job",
+          "description": "Obbligatorio solo per la retention BMA. La policy si applica esclusivamente ai backup con questo ID job BMA."
+        },
+        "group_by": {
+          "name": "Raggruppamento App",
+          "description": "Per App Update, applica la policy separatamente per App oppure a tutte le App insieme. Il valore predefinito è per App."
+        },
+        "agent_ids": {
+          "name": "Backup Agent",
+          "description": "Ambito opzionale della retention. Se omesso, vengono inclusi tutti i Backup Agent attualmente registrati."
+        },
+        "keep_last": {
+          "name": "Mantieni ultimi",
+          "description": "Mantiene gli N backup più recenti in ciascun gruppo di retention, inclusi quelli cifrati."
+        },
+        "daily": {
+          "name": "Giornalieri",
+          "description": "Mantiene il backup più recente in ciascuno degli N giorni di calendario, incluso quello corrente."
+        },
+        "weekly": {
+          "name": "Settimanali",
+          "description": "Mantiene il backup più recente in ciascuna delle N settimane ISO, inclusa quella corrente."
+        },
+        "monthly": {
+          "name": "Mensili",
+          "description": "Mantiene il backup più recente in ciascuno degli N mesi di calendario, incluso quello corrente."
+        },
+        "yearly": {
+          "name": "Annuali",
+          "description": "Mantiene il backup più recente in ciascuno degli N anni di calendario, incluso quello corrente."
+        }
+      }
+    },
+    "apply_retention": {
+      "name": "Applica retention",
+      "description": "Ricalcola il piano di retention a calendario corrente, elimina le copie idonee nell'ambito selezionato e verifica ogni cancellazione.",
+      "fields": {
+        "source_type": {
+          "name": "Tipo sorgente",
+          "description": "Classe di backup da valutare: BMA, HA Native oppure App Update."
+        },
+        "job_id": {
+          "name": "ID job",
+          "description": "Obbligatorio solo per la retention BMA. La policy si applica esclusivamente ai backup con questo ID job BMA."
+        },
+        "group_by": {
+          "name": "Raggruppamento App",
+          "description": "Per App Update, applica la policy separatamente per App oppure a tutte le App insieme. Il valore predefinito è per App."
+        },
+        "agent_ids": {
+          "name": "Backup Agent",
+          "description": "Ambito opzionale della retention. Se omesso, vengono inclusi tutti i Backup Agent attualmente registrati."
+        },
+        "keep_last": {
+          "name": "Mantieni ultimi",
+          "description": "Mantiene gli N backup più recenti in ciascun gruppo di retention, inclusi quelli cifrati."
+        },
+        "daily": {
+          "name": "Giornalieri",
+          "description": "Mantiene il backup più recente in ciascuno degli N giorni di calendario, incluso quello corrente."
+        },
+        "weekly": {
+          "name": "Settimanali",
+          "description": "Mantiene il backup più recente in ciascuna delle N settimane ISO, inclusa quella corrente."
+        },
+        "monthly": {
+          "name": "Mensili",
+          "description": "Mantiene il backup più recente in ciascuno degli N mesi di calendario, incluso quello corrente."
+        },
+        "yearly": {
+          "name": "Annuali",
+          "description": "Mantiene il backup più recente in ciascuno degli N anni di calendario, incluso quello corrente."
         }
       }
     }

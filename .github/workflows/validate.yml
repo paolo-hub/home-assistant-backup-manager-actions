@@ -39,7 +39,29 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.13"
+      - name: Install service schema test dependency
+        run: python -m pip install voluptuous==0.16.0 PyYAML==6.0.2
       - name: Compile integration
         run: python -m compileall -q custom_components tests
+      - name: Run inventory simulation
+        run: python tests/test_inventory.py
+      - name: Run event tracker simulation
+        run: python tests/test_events.py
+      - name: Run coordinator event simulation
+        run: python tests/test_coordinator.py
+      - name: Run sensor simulation
+        run: python tests/test_sensor.py
+      - name: Run binary sensor simulation
+        run: python tests/test_binary_sensor.py
+      - name: Run retention planner simulation
+        run: python tests/test_retention.py
       - name: Run adapter simulation
         run: python tests/test_adapter.py
+      - name: Run service handler and schema simulation
+        run: python tests/test_services.py
+      - name: Run device registry boundary simulation
+        run: python tests/test_device.py
+      - name: Check action UI schema and translations
+        run: python tests/test_action_ui.py
+      - name: Validate all shipped localizations
+        run: python tests/test_translations.py
