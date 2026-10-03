@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.1.0 — Unreleased stable candidate
+## 1.1.0 — 2026-10-03
 
 - Consolidate the 1.1 inventory, metadata/events, diagnostics and calendar GFS
   retention capabilities introduced in beta1, plus beta2’s service device, SSL
@@ -9,11 +9,12 @@
 - Add structural localization checks to CI; retain the complete behavioral suite.
 - Update documentation to reflect completed beta1 and beta2 live E2E and clarify
   that the companion scheduling/UI package is separate and not included.
-- Preserve all functional code from `1.1.0b2`; only documentation, translations,
-  versioning and associated tests/CI change.
+- Preserve all functional code from `1.1.0b2`; the final stable-preparation
+  changes are limited to documentation, translations, versioning and associated
+  tests/CI.
 
-Merge, tag and stable publication are pending manual action. Published stable
-remains `1.0.1`. No `1.1.0` release is implied by this candidate entry.
+Stable 1.1.0 was prepared after successful beta1 and beta2 live E2E validation
+and the complete 124-test release-candidate suite.
 
 ## 1.1.0b2 — 2026-10-02
 
